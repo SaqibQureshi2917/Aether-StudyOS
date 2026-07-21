@@ -1,0 +1,153 @@
+.navbar{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 72px;
+    padding: 0 2rem;
+    background-color: var(--background);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    backdrop-filter: blur(12px);
+    transition: var(--transition-smooth);
+
+}
+.logo{
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.betaBadge{
+    font-size: 0.7rem;
+    background-color: var(--surface);
+    color: var(--brand-accent);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+.desktopNav{
+    display: flex;
+    gap: 2.5rem;
+    position: relative;
+}
+.navLink{
+    position: relative;
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.5rem 0;
+    transition: var(--transition-smooth);
+}
+.navLink:hover{
+    color: var(--brand-accent);
+}
+.navLinkActive{
+    position: relative;
+    color: var(--brand-accent);
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.5rem 0;
+}
+.activeIndicator{
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--brand-accent);
+    border-radius: 2px;
+}
+.actions{
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    z-index: 1002;
+}
+.signInBtn{
+    background-color: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 0.55rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: var(--transition-smooth);
+}
+.signInBtn:hover{
+    background-color: var(--text-primary);
+    color: var(--background);
+    border-color: var(--text-primary);
+}
+.hamburgerBtn{
+    display: none;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 1.3rem;
+    padding: 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+}
+.mobileDrawer{
+    position: fixed;
+    top: 72px;
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 72px);
+    background-color: var(--background);
+    z-index: 1001;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+}
+.mobileNav{
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+.mobileNavLinks{
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+    display: block;
+}
+.mobileNavLinks:hover, .mobileNavLinkActive{
+    color: var(--brand-accent);
+    font-weight: 600;
+}
+
+.mobileSignInBtn{
+    margin-top: 1.3rem;
+    background-color: var(--brand-accent);
+    color: white;
+    text-align: center;
+    padding: .9rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    display: block;
+    transition: var(--transition-smooth);
+}
+.mobileSignInBtn:hover{
+    background-color: var(--brand-accent-hover);
+}
+
+@media (max-width:768px) {
+    .desktopNav, .signInBtn{
+        display: none;
+    }
+    .hamburgerBtn{
+        display: flex;
+    }
+}
+@media (max-width:400px) {
+    .actions{
+        gap: .25rem;
+    }
+}

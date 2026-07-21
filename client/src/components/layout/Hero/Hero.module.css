@@ -1,0 +1,145 @@
+.heroSection{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6rem 2rem 4rem 2rem;
+    background-color: var(--background);
+    min-height: calc(100vh - 72px);
+    text-align: center;
+}
+.contentContainer{
+    max-width: 820px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.badge{
+   display: inline-flex;
+   align-items: center;
+   gap: 0.5rem;
+   padding: 0.4rem 0.9rem;
+   border-radius: 20px;
+   background-color: var(--surface);
+   border: 1px solid var(--border);
+   color: var(--text-secondary);
+   font-size: 0.85rem;
+   font-weight: 500;
+   margin-bottom: 2rem;
+}
+.badgeDot{
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--brand-accent);
+
+}
+
+.headline{
+    font-size: 3.75rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.15;
+    letter-spacing: -0.025;
+    margin-bottom: 1.5rem;
+}
+.highlight{
+    color: var(--brand-accent);
+    background: linear-gradient(135deg, var(--brand-accent) 0%, #60a5fa  100%);
+    /* #e5920d */
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.subheading{
+    font-size: 1.25rem;
+    color:var(--text-secondary);
+    line-height: 1.6;
+    margin-top: 2.5rem;
+    max-width: 680px;
+}
+
+.ctaForm{
+    margin-top: 30px;
+    display: flex;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface-card);
+    padding: 0.5rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+    transition: var(--transition-smooth);
+}
+
+.ctaForm:focus-within{
+    border-color: var(--brand-accent);
+}
+.emailInput{
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-family: var(--font-sans);
+}
+.emailInput:focus{
+    outline: none;
+}
+.primaryBtn{
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--brand-accent);
+    color: white;
+    border: none;
+   padding: 0.75rem 1.5rem;
+   border-radius: 8px;
+   font-weight: 600;
+   cursor: pointer;
+   transition: var(--transition-smooth);
+   white-space: nowrap;
+   
+}
+.btnIcon{
+    font-size: 1.1rem;
+}
+.trustBadge{
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.75rem;
+    font-size: 0,85rem;
+    color: var(--text-muted);
+}
+.checkIcon{
+    color: var(--success);
+    font-size: 1rem;
+}
+@media (max-width:640px) {
+    .headline{
+        font-size: 2.5rem;
+    }
+    .subheading{
+        font-size: 1.1rem;
+    }
+    .ctaForm{
+        flex-direction: column;
+        background: transparent;
+        border: none;
+        padding: 0;
+        box-shadow: none;
+    }
+    .emailInput{
+        background: var(--surface-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        width: 100%;
+    }
+    .primaryBtn{
+        width: 100%;
+        justify-content: center;
+    }
+    
+}

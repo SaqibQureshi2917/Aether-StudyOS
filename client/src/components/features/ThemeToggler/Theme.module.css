@@ -1,0 +1,29 @@
+.toggleBtn{
+    background: transparent;
+    border: 1px solid var(--barder);
+    color: var(--text-primary);
+    padding: 0.55rem;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: var(--transition-smooth);
+}
+
+.toggleBtn:hover{
+    background-color: var(--surface);
+  border-color: var(--brand-accent);
+}
+.iconWrapper{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+}
+.sunIcon{
+    color: #f59e0b;
+}
+.moonIcon{
+    color: var(--brand-accent);
+}
