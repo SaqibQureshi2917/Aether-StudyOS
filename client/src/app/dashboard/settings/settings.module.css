@@ -1,0 +1,303 @@
+.settingsLayout {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--background);
+}
+
+.mainContent {
+  flex: 1;
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  overflow-y: auto;
+}
+
+.topHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageTitle {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.pageSubtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.saveBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--brand-accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 1.4rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.saveBtn:hover {
+  background-color: var(--brand-accent-hover);
+}
+
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settingsCard {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  padding: 2rem;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.cardHeader {
+  display: flex;
+  gap: 1rem;
+}
+
+.iconWrapper {
+  font-size: 1.4rem;
+  color: var(--brand-accent);
+  background-color: var(--surface);
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  height: fit-content;
+}
+
+.cardHeader h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.cardHeader p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* Field Styles */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.inputGroup, .fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.accentText {
+  color: var(--brand-accent);
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 0.9rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.input, .select {
+  width: 100%;
+  padding: 0.75rem 0.9rem 0.75rem 2.5rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  transition: var(--transition-smooth);
+}
+
+.select {
+  padding-left: 0.9rem;
+}
+
+.input:focus, .select:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+  background-color: var(--surface-card);
+}
+
+.rangeInput {
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.modeCard, .activeModeCard {
+  padding: 1.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.modeCard h4, .activeModeCard h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.modeCard p, .activeModeCard p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.activeModeCard {
+  border-color: var(--brand-accent);
+  background-color: var(--surface-card);
+  box-shadow: 0 0 0 1px var(--brand-accent);
+}
+
+/* Toggle & Danger Zone */
+.toggleRow, .dangerZone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.toggleTitle, .dangerTitle {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  display: block;
+}
+
+.toggleSubtitle, .dangerSubtitle {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+.toggleCheckbox {
+  accent-color: var(--brand-accent);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.resetBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.825rem;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.resetBtn:hover {
+  background-color: #ef4444;
+  color: #ffffff;
+}
+
+/* Modal Overlay */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.modalContainer {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+}
+
+.closeModalBtn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  z-index: 2100;
+}
+
+@media (max-width: 768px) {
+  .settingsLayout {
+    flex-direction: column;
+    padding-top: 64px;
+  }
+
+  .mainContent {
+    padding: 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .topHeader, .toggleRow, .dangerZone {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .fieldGrid, .modeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .saveBtn {
+    width: 100%;
+    justify-content: center;
+  }
+}

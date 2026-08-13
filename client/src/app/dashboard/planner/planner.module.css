@@ -1,0 +1,353 @@
+.plannerLayout {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--background);
+}
+
+.mainContent {
+  flex: 1;
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  overflow-y: auto;
+}
+
+.topHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageTitle {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.pageSubtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.aiSyncBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--brand-accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+/* Adaptive Zero-Penalty Banner */
+.adaptiveBanner {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-accent);
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bannerInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cpuIcon {
+  font-size: 1.6rem;
+  color: var(--brand-accent);
+}
+
+.bannerInfo h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+
+.bannerInfo p {
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+}
+
+.adaptiveBadge {
+  font-size: 0.75rem;
+  color: var(--brand-accent);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* Pace Adjustment Slider Card */
+.paceCard {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.paceHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.paceIcon {
+  font-size: 1.4rem;
+  color: var(--brand-accent);
+}
+
+.paceHeader h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.paceHeader p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.sliderControl {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rangeInput {
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+  width: 140px;
+}
+
+.hoursDisplay {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--brand-accent);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Practice Roadmap Workspace */
+.workspaceSection {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.disclaimerBadge {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.taskRow, .completedTaskRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  gap: 1rem;
+}
+
+.completedTaskRow { opacity: 0.5; }
+
+.checkBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+}
+
+.uncheckedIcon { color: var(--text-muted); }
+.checkedIcon { color: var(--success); }
+
+.taskDetails {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.subjectRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.subjectTag {
+  font-size: 0.775rem;
+  color: var(--brand-accent);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.assignmentBadge, .quizBadge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.assignmentBadge {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.quizBadge {
+  background-color: rgba(168, 85, 247, 0.15);
+  border: 1px solid #a855f7;
+  color: #a855f7;
+}
+
+.shiftedBadge {
+  font-size: 0.7rem;
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.taskTitle {
+  font-size: 0.975rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.aiReasoningText {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+.dueDateBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background-color: var(--surface-card);
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Modal Styling */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.modalContainer {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+}
+
+.closeModalBtn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  z-index: 2100;
+}
+
+@media (max-width: 768px) {
+  .plannerLayout {
+    flex-direction: column;
+    padding-top: 64px;
+  }
+
+  .mainContent {
+    padding: 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .topHeader, .adaptiveBanner, .paceCard, .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .sliderControl {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .taskRow, .completedTaskRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dueDateBadge {
+    width: 100%;
+  }
+}

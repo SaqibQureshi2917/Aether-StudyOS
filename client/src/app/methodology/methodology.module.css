@@ -1,0 +1,150 @@
+.container {
+  min-height: calc(100vh - 72px);
+  background-color: var(--background);
+  padding-bottom: 5rem;
+}
+
+.heroSection {
+  padding: 5rem 2rem 3rem 2rem;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+
+.heroContent {
+  max-width: 760px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.35rem 0.9rem;
+  border-radius: 20px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--brand-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 1.25rem;
+  line-height: 1.2;
+}
+
+.highlight {
+  color: var(--brand-accent);
+}
+
+.subtitle {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.frameworkSection {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+
+.stepCard {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 2.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: var(--transition-smooth);
+}
+
+.stepCard:hover {
+  border-color: var(--brand-accent);
+  transform: translateY(-4px);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.iconWrapper {
+  font-size: 1.5rem;
+  color: var(--brand-accent);
+  background-color: var(--surface);
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.stepNum {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.cardTitle {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cardDesc {
+  font-size: 0.925rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.trustSection {
+  max-width: 860px;
+  margin: 3rem auto 0 auto;
+  padding: 0 2rem;
+}
+
+.trustCard {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.shieldIcon {
+  font-size: 2.5rem;
+  color: var(--brand-accent);
+}
+
+.trustCard h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.trustCard p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 640px;
+}
+
+@media (max-width: 768px) {
+  .title { font-size: 2.25rem; }
+  .grid { grid-template-columns: 1fr; }
+}

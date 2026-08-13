@@ -133,6 +133,7 @@
     font-size: 1.1rem;
     display: block;
     transition: var(--transition-smooth);
+    width: 100%;
 }
 .mobileSignInBtn:hover{
     background-color: var(--brand-accent-hover);

@@ -1,10 +1,12 @@
 // src/app/layout.tsx
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { AuthProvider } from '@/context/AuthContext';
+import AuthModal from '@/components/features/AuthModal/AuthModal';
 
 export const metadata = {
-  title: 'Aether StudyOS', //[cite: 1]
-  description: 'AI Student Success Platform', //[cite: 1]
+  title: 'Aether StudyOS',
+  description: 'AI Student Success Platform',
 };
 
 export default function RootLayout({
@@ -16,7 +18,11 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ThemeProvider>
-          {children}
+          <AuthProvider>
+             {children}
+             <AuthModal />
+          </AuthProvider>
+         
         </ThemeProvider>
       </body>
     </html>

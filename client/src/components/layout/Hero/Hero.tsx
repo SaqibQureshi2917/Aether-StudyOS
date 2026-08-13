@@ -3,16 +3,19 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { FiArrowRight, FiCheckCircle } from "react-icons/fi";
+import { useAuthModal } from "@/context/AuthContext";
 import styles from "./Hero.module.css";
 
 export default function Hero() {
   const [email, setEmail] = useState("");
+  const {openAuthModal} = useAuthModal();
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
     if (email) {
-      window.location.href = "signup?email={encodeURIComponent(email)}";
+     openAuthModal('signup',email);
     }
+    // openAuthModal('signup', email);
   };
   return (
     <section className={styles.heroSection}>

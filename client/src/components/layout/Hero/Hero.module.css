@@ -102,6 +102,9 @@
    white-space: nowrap;
    
 }
+.primaryBtn:hover{
+    background-color: var(--brand-accent-hover);
+}
 .btnIcon{
     font-size: 1.1rem;
 }

@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  fullName       String?
+  major          String?
+  semester       String?
+  dailyGoalHours Int          @default(3)
+  aiMode         String       @default("balanced")
+  isOnboarded    Boolean      @default(false)
+  semesters      Semester[]
+  courses        Course[]
+  assignments    Assignment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   
+  isCurrent Boolean  @default(true)
+  courses   Course[]
+  createdAt DateTime @default(now())
+}
+
+model Course {
+  id          String       @id @default(uuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  semesterId  String?
+  semester    Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  courseName  String
+  courseCode  String?
+  assignments Assignment[]
+  createdAt   DateTime     @default(now())
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime
+  status      String   @default("Pending")
+  createdAt   DateTime @default(now())
+}
