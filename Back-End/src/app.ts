@@ -7,9 +7,27 @@ dotenv.config();
 
 const app: Application = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+// Multiple Origins Support (Comma-separated string to Array)
+const rawOrigins = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const allowedOrigins = rawOrigins.split(',').map((url) => url.trim());
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Postman / Server-to-Server requests ya allowed frontend domains
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS Error: Origin ${origin} not allowed.`));
+      }
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
+// Routes
 app.use('/api/v1/auth', authRoutes);
 
 app.get('/health', (req, res) => {
