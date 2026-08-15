@@ -30,6 +30,14 @@ app.use(express.json());
 // Routes
 app.use('/api/v1/auth', authRoutes);
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: '🚀 Aether StudyOS Express Backend Server is Live!',
+    health: '/health',
+    version: '1.0.0',
+  });
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
