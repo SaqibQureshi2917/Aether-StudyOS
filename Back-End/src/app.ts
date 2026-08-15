@@ -7,7 +7,7 @@ dotenv.config();
 
 const app: Application = express();
 
-// Multiple Origins Support (Comma-separated string to Array)
+
 const rawOrigins = process.env.CORS_ORIGIN || 'http://localhost:3000';
 const allowedOrigins = rawOrigins.split(',').map((url) => url.trim());
 
