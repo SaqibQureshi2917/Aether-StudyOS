@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiRequest } from '@/lib/apiClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiBookOpen,
@@ -12,10 +13,24 @@ import {
   FiFileText,
   FiX,
   FiFastForward,
-  FiAlertCircle
+  FiAlertCircle,
+  FiPlus,
+  FiPaperclip
 } from 'react-icons/fi';
 import styles from './OnboardingWizard.module.css';
-import { CourseFile, OnboardingData } from './types';
+
+export interface CourseItem {
+  courseName: string;
+  file?: File;
+}
+
+export interface OnboardingData {
+  major: string;
+  semester: string;
+  courseFiles: CourseItem[];
+  studyGoalHours: number;
+  aiMode: 'balanced' | 'rigorous' | 'exam_prep';
+}
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -23,7 +38,11 @@ export default function OnboardingWizard() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Form State using typed interface
+  // Local state for Step 2 manual addition
+  const [tempSubjectName, setTempSubjectName] = useState<string>('');
+  const [tempSubjectFile, setTempSubjectFile] = useState<File | null>(null);
+
+  // Main Onboarding Form State
   const [formData, setFormData] = useState<OnboardingData>({
     major: '',
     semester: 'Semester 1',
@@ -32,108 +51,116 @@ export default function OnboardingWizard() {
     aiMode: 'balanced',
   });
 
-  const [tempCourseName, setTempCourseName] = useState<string>('');
-
-  // Helper: Call Backend API to Save Data in Neon DB
-  const saveOnboardingToDB = async (isSkipped: boolean = false) => {
-    setIsLoading(true);
-    setErrorMessage('');
-
-    try {
-      // 1. LocalStorage se current logged-in user nikalein
-      const savedUserStr = localStorage.getItem('studyos_user');
-      const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
-
-      if (!savedUser || !savedUser.id) {
-        setErrorMessage('User session expired. Please sign in again.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Prepare payload for /api/onboarding
-      const payload = {
-        userId: savedUser.id,
-        major: isSkipped ? null : formData.major,
-        semester: isSkipped ? null : formData.semester,
-        studyGoalHours: formData.studyGoalHours,
-        courses: isSkipped
-          ? []
-          : formData.courseFiles.map((c) => ({
-              courseName: c.courseName,
-              fileName: c.file.name,
-              fileUrl: '/uploads/' + c.file.name, // Local placeholder path
-            })),
-      };
-
-      // 3. Post to Backend API
-      const response = await fetch('/api/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(data.error || 'Failed to save onboarding data.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 4. Update local user status to isOnboarded = true
-      savedUser.isOnboarded = true;
-      localStorage.setItem('studyos_user', JSON.stringify(savedUser));
-
-      // 5. Navigate to Dashboard
-      setIsLoading(false);
-      router.push('/dashboard');
-    } catch (err) {
-      console.error('Onboarding API Save Error:', err);
-      setErrorMessage('Network error. Failed to connect to server.');
-      setIsLoading(false);
+  // Step 2: Add Subject Logic (Name Mandatory, File Optional)
+  const handleAddSubject = () => {
+    if (!tempSubjectName.trim()) {
+      setErrorMessage('Subject Name is mandatory! Please type a subject name.');
+      return;
     }
+
+    const newCourse: CourseItem = {
+      courseName: tempSubjectName.trim(),
+      file: tempSubjectFile || undefined,
+    };
+
+    setFormData((prev) => ({
+      ...prev,
+      courseFiles: [...prev.courseFiles, newCourse],
+    }));
+
+    // Reset temporary input values & clean error
+    setTempSubjectName('');
+    setTempSubjectFile(null);
+    setErrorMessage('');
   };
 
-  // Skip Handler
+  const handleRemoveSubject = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      courseFiles: prev.courseFiles.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleAttachFileToItem = (index: number, file: File) => {
+    setFormData((prev) => {
+      const updated = [...prev.courseFiles];
+      updated[index].file = file;
+      return { ...prev, courseFiles: updated };
+    });
+  };
+
+  // Express Backend Sync via apiClient
+  const saveOnboardingToDB = async (isSkipped: boolean = false) => {
+  setIsLoading(true);
+  setErrorMessage('');
+
+  try {
+    const payload = {
+      major: isSkipped ? 'General' : formData.major || 'General',
+      semesterName: isSkipped ? 'Semester 1' : formData.semester,
+      dailyGoalHours: formData.studyGoalHours,
+      aiMode: formData.aiMode || 'balanced',
+      courses: isSkipped ? [] : formData.courseFiles.map((c) => c.courseName),
+    };
+
+    await apiRequest('/user/onboard', 'POST', payload);
+
+    const savedUserStr = localStorage.getItem('studyos_user');
+    const savedUser = savedUserStr ? JSON.parse(savedUserStr) : {};
+    savedUser.isOnboarded = true;
+    savedUser.major = payload.major;
+    savedUser.semester = payload.semesterName;
+    localStorage.setItem('studyos_user', JSON.stringify(savedUser));
+
+    router.replace('/dashboard');
+  } catch (err: any) {
+    console.error('Onboarding Express API Save Error:', err);
+    setErrorMessage(err.message || 'Failed to save onboarding data.');
+    // Redirection fallback if error occurs
+    router.replace('/dashboard');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Skip Handler (Directly bypasses step validations)
   const handleSkip = () => {
     saveOnboardingToDB(true);
   };
 
-  // Next / Finish Handler
+  // Step Validation & Navigation Control
   const handleNext = () => {
-    if (currentStep < 3) {
-      setCurrentStep((prev) => prev + 1);
-    } else {
-      // Step 3 Complete -> Save to Neon Cloud Database
+    setErrorMessage('');
+
+    // Step 1 Validation Rule: Major is required
+    if (currentStep === 1) {
+      if (!formData.major.trim()) {
+        setErrorMessage('Degree Major is mandatory! Please enter your major or click "Skip for now".');
+        return;
+      }
+      setCurrentStep(2);
+      return;
+    }
+
+    // Step 2 Validation Rule: At least 1 subject must be added
+    if (currentStep === 2) {
+      if (formData.courseFiles.length === 0) {
+        setErrorMessage('Please add at least one subject to continue, or click "Skip for now".');
+        return;
+      }
+      setCurrentStep(3);
+      return;
+    }
+
+    // Step 3 Complete: Save to DB
+    if (currentStep === 3) {
       saveOnboardingToDB(false);
     }
   };
 
   const handleBack = () => {
+    setErrorMessage('');
     if (currentStep > 1) setCurrentStep((prev) => prev - 1);
-  };
-
-  // Multiple Course Syllabus File Upload Handler
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFiles: CourseFile[] = Array.from(e.target.files).map((f) => ({
-        file: f,
-        courseName: tempCourseName.trim() || f.name.replace(/\.[^/.]+$/, ''),
-      }));
-
-      setFormData((prev) => ({
-        ...prev,
-        courseFiles: [...prev.courseFiles, ...newFiles],
-      }));
-      setTempCourseName('');
-    }
-  };
-
-  const removeCourseFile = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      courseFiles: prev.courseFiles.filter((_, i) => i !== index),
-    }));
   };
 
   return (
@@ -159,14 +186,16 @@ export default function OnboardingWizard() {
         />
       </div>
 
-      {/* Error Message Alert */}
+      {/* Validation / Error Message Alert */}
       {errorMessage && (
         <div className={styles.errorAlert}>
-          <FiAlertCircle /> <span>{errorMessage}</span>
+          <FiAlertCircle className={styles.errorIcon} /> 
+          <span>{errorMessage}</span>
         </div>
       )}
 
       <AnimatePresence mode="wait">
+        {/* STEP 1: Academic Profile */}
         {currentStep === 1 && (
           <motion.div
             key="step1"
@@ -178,14 +207,16 @@ export default function OnboardingWizard() {
             <div className={styles.iconBadge}><FiBookOpen /></div>
             <h1 className={styles.stepTitle}>Academic Profile</h1>
             <p className={styles.stepSubtitle}>
-              Which degree program and semester are you currently enrolled in?
+              Tell us about your degree program and current semester.
             </p>
 
             <div className={styles.formGroup}>
-              <label className={styles.label}>Degree Major</label>
+              <label className={styles.label}>
+                Degree Major <span className={styles.requiredStar}>*</span>
+              </label>
               <input
                 type="text"
-                placeholder="e.g. Computer Science, BS Software Engineering"
+                placeholder="e.g. BS Computer Science, Software Engineering"
                 value={formData.major}
                 onChange={(e) => setFormData({ ...formData, major: e.target.value })}
                 className={styles.input}
@@ -193,7 +224,7 @@ export default function OnboardingWizard() {
             </div>
 
             <div className={styles.formGroup}>
-              <label className={styles.label}>Semester</label>
+              <label className={styles.label}>Current Semester</label>
               <select
                 value={formData.semester}
                 onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
@@ -212,6 +243,7 @@ export default function OnboardingWizard() {
           </motion.div>
         )}
 
+        {/* STEP 2: Subject & Syllabus Setup */}
         {currentStep === 2 && (
           <motion.div
             key="step2"
@@ -221,52 +253,97 @@ export default function OnboardingWizard() {
             className={styles.stepContent}
           >
             <div className={styles.iconBadge}><FiUploadCloud /></div>
-            <h1 className={styles.stepTitle}>Upload Course Syllabi</h1>
+            <h1 className={styles.stepTitle}>Your Subjects & Outlines</h1>
             <p className={styles.stepSubtitle}>
-              Upload PDFs for your individual subjects (e.g., AI, Operating Systems, Web Dev).
+              Subject name is mandatory. Slides/PDFs are optional.
             </p>
 
-            <div className={styles.uploadBox}>
+            {/* Input Box for Subject & Optional File */}
+            <div className={styles.addSubjectBox}>
               <div className={styles.formGroup}>
-                <label className={styles.label}>Subject / Course Tag (Optional)</label>
+                <label className={styles.label}>
+                  Subject Name <span className={styles.requiredStar}>*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. Artificial Intelligence"
-                  value={tempCourseName}
-                  onChange={(e) => setTempCourseName(e.target.value)}
+                  value={tempSubjectName}
+                  onChange={(e) => setTempSubjectName(e.target.value)}
                   className={styles.input}
                 />
               </div>
 
-              <label htmlFor="multiFileUpload" className={styles.dropzoneLabel}>
-                <FiUploadCloud className={styles.dropIcon} />
-                <span>Choose Syllabus PDFs or Timetable</span>
+              <div className={styles.fileInputRow}>
+                <label htmlFor="tempFile" className={styles.fileLabelBtn}>
+                  <FiPaperclip /> 
+                  {tempSubjectFile ? tempSubjectFile.name : 'Attach Syllabus PDF (Optional)'}
+                </label>
                 <input
-                  id="multiFileUpload"
+                  id="tempFile"
                   type="file"
-                  multiple
                   accept=".pdf,.docx,.png,.jpg"
-                  onChange={handleFileUpload}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setTempSubjectFile(e.target.files[0]);
+                    }
+                  }}
                   className={styles.hiddenInput}
                 />
-              </label>
+                
+                {tempSubjectFile && (
+                  <button 
+                    type="button" 
+                    onClick={() => setTempSubjectFile(null)}
+                    className={styles.clearFileBtn}
+                  >
+                    <FiX />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddSubject}
+                className={styles.addSubjectBtn}
+              >
+                <FiPlus /> Add Subject
+              </button>
             </div>
 
+            {/* Added Subjects List */}
             {formData.courseFiles.length > 0 && (
               <div className={styles.courseFileList}>
-                <h4>Uploaded Subject Outlines ({formData.courseFiles.length}):</h4>
+                <h4>Added Subjects ({formData.courseFiles.length}):</h4>
                 {formData.courseFiles.map((item, idx) => (
                   <div key={idx} className={styles.courseFileItem}>
                     <div className={styles.fileDetails}>
                       <FiFileText className={styles.fileIcon} />
                       <div>
                         <strong>{item.courseName}</strong>
-                        <p>{item.file.name}</p>
+                        {item.file ? (
+                          <span className={styles.fileNameAttached}>
+                            📄 {item.file.name}
+                          </span>
+                        ) : (
+                          <label className={styles.inlineAttachBtn}>
+                            + Attach Slide
+                            <input
+                              type="file"
+                              accept=".pdf,.docx,.png,.jpg"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleAttachFileToItem(idx, e.target.files[0]);
+                                }
+                              }}
+                              className={styles.hiddenInput}
+                            />
+                          </label>
+                        )}
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeCourseFile(idx)}
+                      onClick={() => handleRemoveSubject(idx)}
                       className={styles.removeBtn}
                     >
                       <FiX />
@@ -278,6 +355,7 @@ export default function OnboardingWizard() {
           </motion.div>
         )}
 
+        {/* STEP 3: Study Goals */}
         {currentStep === 3 && (
           <motion.div
             key="step3"
@@ -287,9 +365,9 @@ export default function OnboardingWizard() {
             className={styles.stepContent}
           >
             <div className={styles.iconBadge}><FiTarget /></div>
-            <h1 className={styles.stepTitle}>Preferences Locked!</h1>
+            <h1 className={styles.stepTitle}>Study Goal Settings</h1>
             <p className={styles.stepSubtitle}>
-              Your StudyOS workspace is ready to generate source-grounded study plans and AI tutors.
+              Configure daily study hours for your zero-penalty adaptive planner.
             </p>
 
             <div className={styles.formGroup}>
@@ -328,10 +406,10 @@ export default function OnboardingWizard() {
           type="button"
           onClick={handleNext}
           className={styles.nextBtn}
-          disabled={isLoading || (currentStep === 1 && !formData.major.trim())}
+          disabled={isLoading}
         >
           {isLoading
-            ? 'Saving to Cloud DB...'
+            ? 'Saving...'
             : currentStep === 3
             ? 'Go to Dashboard'
             : 'Continue'}

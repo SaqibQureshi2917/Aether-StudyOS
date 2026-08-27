@@ -1,7 +1,8 @@
 import app from './app';
+import { ENV } from './config/env';
 
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(ENV.PORT, 10);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Express Backend Server running on port ${PORT}`);
+  console.log(`🚀 Aether StudyOS Backend running on port ${PORT}`);
 });

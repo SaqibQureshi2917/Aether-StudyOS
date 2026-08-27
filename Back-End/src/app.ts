@@ -1,41 +1,38 @@
 import express, { Application } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import authRoutes from './modules/auth/auth.routes';
-import userRoutes from './modules/user/user.routes';
-
-dotenv.config();
+import path from 'path';
+import { ENV } from './config/env';
+import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
+import courseRoutes from './routes/course.routes';
+import assignmentRoutes from './routes/assignment.routes';
+import materialRoutes from './routes/material.routes';
+import { errorHandler } from './middleware/error.middleware';
+import dashboardRoutes from './routes/dashboard.routes';
+import chatRoutes from './routes/chat.routes';
 
 const app: Application = express();
 
-const rawOrigins = process.env.CORS_ORIGIN || 'http://localhost:3000';
-const allowedOrigins = rawOrigins.split(',').map((url) => url.trim());
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, true); // Dev testing flexibility
-      }
-    },
-    credentials: true,
-  })
-);
-
+app.use(cors({ origin: ENV.CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
-// Main Routes
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Routes Mounting
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/user', userRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/assignments', assignmentRoutes);
+app.use('/api/v1/materials', materialRoutes);
+app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/chat', chatRoutes);
 
-app.get('/', (req, res) => {
-  res.status(200).json({ message: '🚀 Aether StudyOS Backend API is Live!' });
+app.get('/api/v1/health', (req, res) => {
+  res.status(200).json({ success: true, message: 'Aether Engine Active' });
 });
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
-});
+app.use(errorHandler);
 
 export default app;

@@ -1,0 +1,450 @@
+@keyframes pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.3; }
+}
+
+.skeletonBase {
+  background-color: var(--surface-card, #12131a);
+  border: 1px solid var(--border, #2e3248);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.box {
+  background-color: var(--surface, #1e202e);
+  border-radius: 6px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* Specific Dimension Classes (Zero Inline Styles) */
+.boxSubHeader {
+  width: 40%;
+  height: 14px;
+  margin-bottom: 10px;
+}
+
+.boxTitle {
+  width: 70%;
+  height: 24px;
+}
+
+.boxSectionTitle {
+  width: 30%;
+  height: 20px;
+  margin-bottom: 1.5rem;
+}
+
+.boxCardFull {
+  width: 100%;
+  height: 50px;
+  margin-bottom: 10px;
+}
+
+.boxLargeCard {
+  width: 100%;
+  height: 100px;
+  margin-bottom: 1rem;
+}
+
+.boxBtn {
+  width: 100%;
+  height: 40px;
+}
+
+.boxHeaderTitle {
+  width: 200px;
+  height: 28px;
+  margin-bottom: 8px;
+}
+
+.boxHeaderSub {
+  width: 300px;
+  height: 14px;
+}
+
+.boxHeaderBtn {
+  width: 140px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.boxTab {
+  width: 80px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.boxCardTag {
+  width: 40%;
+  height: 16px;
+  margin-bottom: 1rem;
+}
+
+.boxCardTitle {
+  width: 75%;
+  height: 22px;
+  margin-bottom: 1rem;
+}
+
+.boxCardProgress {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.boxBackLink {
+  width: 160px;
+  height: 20px;
+}
+
+.boxActionBtn {
+  width: 140px;
+  height: 36px;
+}
+
+.boxHeroTag {
+  width: 20%;
+  height: 18px;
+  margin-bottom: 1rem;
+}
+
+.boxHeroTitle {
+  width: 60%;
+  height: 32px;
+  margin-bottom: 1rem;
+}
+
+.boxHeroBar {
+  width: 100%;
+  height: 10px;
+}
+
+.boxSideCard {
+  height: 140px;
+}
+
+.boxPlannerTitle {
+  width: 250px;
+  height: 32px;
+}
+
+.boxDayTitle {
+  width: 80%;
+  height: 18px;
+  margin-bottom: 1rem;
+}
+
+.boxDaySlot {
+  width: 100%;
+  height: 70px;
+  margin-bottom: 10px;
+}
+/* Sidebar Chat History Skeleton */
+.sidebarChatSkeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+}
+
+.chatSkeletonIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.chatSkeletonText {
+  height: 14px;
+  border-radius: 4px;
+  flex: 1;
+}
+
+/* Layout Containers */
+.dashboardContainer, .assignmentsContainer, .plannerContainer {
+  padding: 1.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.topBanner {
+  height: 70px;
+  border-radius: 14px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+.metricCard {
+  height: 90px;
+  padding: 1rem;
+}
+
+.splitWorkspace {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.5rem;
+}
+
+.planBox, .recomBox {
+  height: 320px;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filterRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+
+.assignmentCard {
+  height: 220px;
+}
+
+.detailHero {
+  height: 240px;
+}
+
+.detailWorkspace {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 1.5rem;
+}
+
+.sideColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.chatLayout {
+  padding: 1.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 80px);
+  width: 100%;
+  gap: 1rem;
+}
+
+.chatHeader {
+  height: 60px;
+}
+
+.chatStream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.userBubble {
+  width: 35%;
+  height: 40px;
+  align-self: flex-end;
+}
+
+.aiBubble {
+  width: 50%;
+  height: 60px;
+  align-self: flex-start;
+}
+
+.chatInput {
+  height: 60px;
+}
+
+.weekGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.75rem;
+}
+
+.dayColumn {
+  height: 450px;
+  padding: 0.75rem;
+}
+
+/* Pricing Page Skeleton */
+.pricingContainer {
+  padding: 4rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.pricingHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.boxPricingTitle {
+  width: 300px;
+  height: 36px;
+}
+
+.boxPricingSub {
+  width: 450px;
+  height: 18px;
+}
+
+.pricingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  width: 100%;
+}
+
+.pricingCardSkeleton {
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Onboarding Page Skeleton */
+.onboardingContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background-color: var(--background);
+}
+
+.onboardingCardSkeleton {
+  width: 100%;
+  max-width: 580px;
+  height: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Landing / Home Hero Skeleton */
+.landingContainer {
+  min-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.boxHeroBadge {
+  width: 220px;
+  height: 32px;
+  border-radius: 20px;
+}
+
+.boxLandingTitle {
+  width: 80%;
+  height: 56px;
+  border-radius: 10px;
+}
+
+.boxLandingSub {
+  width: 65%;
+  height: 24px;
+}
+
+.boxLandingCta {
+  width: 420px;
+  height: 50px;
+  border-radius: 12px;
+  margin-top: 1rem;
+}
+
+/* Methodology Page Skeleton */
+.methodologyContainer {
+  padding: 4rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.methodologyHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.boxMethodTitle {
+  width: 320px;
+  height: 40px;
+}
+
+.boxMethodSub {
+  width: 500px;
+  height: 18px;
+}
+
+.methodologyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.methodologyCardSkeleton {
+  height: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+
+
+
+@media (max-width: 900px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .splitWorkspace, .detailWorkspace {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 768px) {
+  .pricingGrid {
+    grid-template-columns: 1fr;
+  }
+  .boxLandingTitle {
+    width: 100%;
+    height: 42px;
+  }
+  .boxLandingCta {
+    width: 100%;
+  }
+  .methodologyGrid {
+    grid-template-columns: 1fr;
+  }
+}

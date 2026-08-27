@@ -307,3 +307,21 @@
 .trustIcon {
   color: var(--success);
 }
+.switchModeBtn {
+  display: inline-block;
+  margin-top: 0.4rem;
+  background: transparent;
+  border: none;
+  color: var(--brand-accent, #6366f1);
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-align: left;
+  transition: var(--transition-smooth);
+}
+
+.switchModeBtn:hover {
+  color: var(--brand-accent-hover, #4f46e5);
+}

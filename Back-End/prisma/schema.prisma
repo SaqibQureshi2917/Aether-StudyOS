@@ -7,53 +7,360 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id             String       @id @default(uuid())
-  email          String       @unique
-  passwordHash   String
-  fullName       String?
-  major          String?
-  semester       String?
-  dailyGoalHours Int          @default(3)
-  aiMode         String       @default("balanced")
-  isOnboarded    Boolean      @default(false)
-  semesters      Semester[]
-  courses        Course[]
-  assignments    Assignment[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+// ==========================================
+// ENUMS & CONFIGURATIONS
+// ==========================================
+
+enum PlanType {
+  FREE
+  PRO
 }
 
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum StatusState {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum SemesterStatus {
+  ACTIVE
+  COMPLETED
+  PLANNED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  PARTIALLY_COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum RecommendationType {
+  MISSED_SESSION
+  NEW_COURSE
+  NEW_ASSIGNMENT
+  NEW_MATERIAL
+  OVERLOAD
+  DEADLINE_RISK
+  ESTIMATION_ERROR
+  PERFORMANCE_RISK
+  AVAILABILITY_CHANGE
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  DISMISSED
+  EXPIRED
+}
+
+enum ChatMode {
+  GENERAL
+  STUDY
+}
+
+enum SourceType {
+  GENERAL_AI
+  SOURCE_GROUNDED
+  SOURCE_INSUFFICIENT
+}
+
+// ==========================================
+// USER & FREEMIUM USAGE
+// ==========================================
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  password        String
+  fullName        String
+  major           String?
+  currentSemester String?
+  dailyGoalHours  Float    @default(3.0)
+  aiMode          String   @default("BALANCED")
+  planType        PlanType @default(FREE)
+  isOnboarded     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscription          Subscription?
+  usageTracker          UsageTracker?
+  semesters             Semester[]
+  availabilitySlots     AvailabilitySlot[]
+  plannerRecommendations PlannerRecommendation[]
+  performanceRecords    PerformanceRecord[]
+  conversations         Conversation[]
+}
+
+model Subscription {
+  id               String     @id @default(uuid())
+  userId           String     @unique
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan             PlanType   @default(FREE)
+  status           String     @default("ACTIVE")
+  startDate        DateTime   @default(now())
+  endDate          DateTime?
+  paymentProvider  String?
+  subscriptionId   String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model UsageTracker {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monthYear       String
+  aiRequestsCount Int      @default(0)
+  docUploadCount  Int      @default(0)
+  quizCount       Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+// ==========================================
+// SEMESTER & ACADEMIC STRUCTURE
+// ==========================================
+
 model Semester {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String   
-  isCurrent Boolean  @default(true)
-  courses   Course[]
-  createdAt DateTime @default(now())
+  id         String         @id @default(uuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String         // e.g. "Fall 2026"
+  startDate  DateTime
+  endDate    DateTime
+  status     SemesterStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  courses    Course[]
+  plans      PlannerPlan[]
 }
 
 model Course {
-  id          String       @id @default(uuid())
-  userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  semesterId  String?
-  semester    Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
-  courseName  String
-  courseCode  String?
-  assignments Assignment[]
-  createdAt   DateTime     @default(now())
+  id           String      @id @default(uuid())
+  semesterId   String
+  semester     Semester    @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  code         String?
+  name         String
+  creditHours  Int         @default(3)
+  difficulty   Int         @default(3) // 1 to 5 scale
+  priority     Int         @default(3) // 1 to 5 scale
+  status       String      @default("ACTIVE")
+  instructor   String?
+  description  String?     @db.Text
+  colorCode    String?     @default("#6366f1")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  materials    CourseMaterial[]
+  assignments  Assignment[]
+  exams        Exam[]
+  studyTasks   StudyTask[]
+  topicMasteries TopicMastery[]
 }
 
+model CourseMaterial {
+  id            String   @id @default(uuid())
+  courseId      String
+  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title         String
+  fileUrl       String
+  fileType      String?
+  extractedText String?  @db.Text
+  isIndexed     Boolean  @default(false)
+  metadata      Json?    // Extracted topics, page count, structure
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ==========================================
+// ASSIGNMENT, EXAMS & TASKS ENGINE
+// ==========================================
+
 model Assignment {
+  id             String          @id @default(uuid())
+  courseId       String
+  course         Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?         @db.Text
+  deadline       DateTime
+  difficulty     DifficultyLevel @default(MEDIUM)
+  priority       PriorityLevel   @default(MEDIUM)
+  estimatedHours Float           @default(1.0)
+  completedHours Float           @default(0.0)
+  status         StatusState     @default(PENDING)
+  estimateSource String          @default("USER") // USER, SYSTEM, AI_ASSISTANT
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  studyTasks     StudyTask[]
+}
+
+model Exam {
+  id              String   @id @default(uuid())
+  courseId        String
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title           String
+  date            DateTime
+  coverage        String?  @db.Text
+  importance      Int      @default(3)
+  estimatedEffort Float    @default(5.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  studyTasks      StudyTask[]
+}
+
+model StudyTask {
+  id             String         @id @default(uuid())
+  courseId       String
+  course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     Assignment?    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  examId         String?
+  exam           Exam?          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  title          String
+  estimatedHours Float
+  adjustedHours  Float          @default(0.0)
+  priorityScore  Float          @default(0.0)
+  deadline       DateTime
+  status         StatusState    @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  sessions       StudySession[]
+}
+
+// ==========================================
+// ADAPTIVE PLANNER & SESSIONS
+// ==========================================
+
+model StudySession {
+  id               String        @id @default(uuid())
+  taskId           String
+  task             StudyTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId           String
+  scheduledStart   DateTime
+  scheduledEnd     DateTime
+  plannedDuration  Float         // in hours
+  actualDuration   Float?        // in hours
+  status           SessionStatus @default(SCHEDULED)
+  startedAt        DateTime?
+  endedAt          DateTime?
+  pauseDuration    Float         @default(0.0) // in minutes
+  isManualOverride Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model AvailabilitySlot {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int      // 0 = Sunday, 1 = Monday, etc.
+  startTime  String   // "08:00"
+  endTime    String   // "12:00"
+  isBlocked  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PlannerPlan {
   id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title       String
-  dueDate     DateTime
-  status      String   @default("Pending")
+  semesterId  String
+  semester    Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  metadata    Json?
   createdAt   DateTime @default(now())
+}
+
+model PlannerRecommendation {
+  id              String               @id @default(uuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            RecommendationType
+  title           String
+  message         String               @db.Text
+  severity        String               @default("INFO")
+  relatedTaskId   String?
+  relatedCourseId String?
+  status          RecommendationStatus @default(PENDING)
+  createdAt       DateTime             @default(now())
+  expiresAt       DateTime?
+}
+
+model PerformanceRecord {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId         String
+  estimatedHours Float
+  actualHours    Float
+  ratio          Float    // actualHours / estimatedHours
+  createdAt      DateTime @default(now())
+}
+
+model TopicMastery {
+  id                String   @id @default(uuid())
+  userId            String
+  courseId          String
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topicName         String
+  masteryPercentage Float    @default(0.0)
+  updatedAt         DateTime @updatedAt
+}
+
+// ==========================================
+// AI CHAT & CITATIONS (EXISTING)
+// ==========================================
+
+model Conversation {
+  id        String        @id @default(uuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String        @default("New Chat")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String       // 'USER' | 'ASSISTANT'
+  content        String       @db.Text
+  mode           ChatMode
+  sourceType     SourceType   @default(GENERAL_AI)
+  createdAt      DateTime     @default(now())
+  citations      Citation[]
+}
+
+model Citation {
+  id         String      @id @default(uuid())
+  messageId  String
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  documentId String
+  fileName   String
+  pageNumber Int
+  chunkId    String
+  createdAt  DateTime    @default(now())
 }
