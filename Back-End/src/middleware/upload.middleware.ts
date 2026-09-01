@@ -1,10 +1,11 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { AppError } from './error.middleware';
 
-// Ensure uploads folder exists
-const uploadDir = path.join(process.cwd(), 'uploads');
+// Vercel ke serverless environment ke liye /tmp directory use karni hai
+const uploadDir = path.join(os.tmpdir(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
