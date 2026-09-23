@@ -175,6 +175,19 @@ model Course {
   studyTasks   StudyTask[]
   topicMasteries TopicMastery[]
 }
+model DocumentChunk {
+  id             String         @id @default(uuid())
+  materialId     String
+  material       CourseMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  chunkIndex     Int
+  content        String         @db.Text
+  pageNumber     Int?
+  tokenCount     Int?
+  embedding      Unsupported("vector(1536)")? // Requires pgvector extension in PostgreSQL
+  createdAt      DateTime       @default(now())
+
+  @@index([materialId])
+}
 
 model CourseMaterial {
   id            String   @id @default(uuid())
@@ -188,6 +201,7 @@ model CourseMaterial {
   metadata      Json?    // Extracted topics, page count, structure
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  chunks        DocumentChunk[]
 }
 
 // ==========================================

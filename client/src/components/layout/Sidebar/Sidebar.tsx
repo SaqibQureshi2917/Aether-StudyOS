@@ -48,7 +48,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
 
   const mainTools = [
     { label: 'Overview', href: '/dashboard', icon: <FiHome /> },
-    { label: 'Assignments', href: '/assignments', icon: <FiCheckSquare /> },
+    { label: 'Assignments', href: '/dashboard/assignments', icon: <FiCheckSquare /> },
     { label: 'AI Study Tutor', href: '/dashboard/chat', icon: <FiMessageSquare /> },
     { label: 'Semester Planner', href: '/dashboard/planner', icon: <FiCalendar /> },
   ];
@@ -75,7 +75,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
   useEffect(() => {
     setIsMobileOpen(false);
     fetchRecentChats();
-  }, [pathname]);
+  }, []);
 
   const handleCreateNewChat = () => {
     router.push('/dashboard/chat?new=true');

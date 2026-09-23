@@ -1,15 +1,18 @@
 .layout {
   display: flex;
-  min-height: 100vh;
+  height: 100dvh; /* Mobile aur desktop dono ke liye modern dvh */
+  overflow: hidden;
   background-color: var(--background);
 }
 
 .main {
   flex: 1;
-  padding: 1.5rem 2.5rem;
+  padding: 1rem 1.5rem; /* Balanced padding taake navbar ke sath height overflow na ho */
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .chatContainer {
@@ -20,16 +23,18 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   overflow: hidden;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
+  min-height: 0; /* Flex child scrolling fix */
 }
 
 .modeHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.25rem;
   background-color: var(--surface);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .modeSwitchGroup {
@@ -45,7 +50,7 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 1rem;
+  padding: 0.45rem 0.85rem;
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
@@ -67,11 +72,32 @@
 
 .messageStream {
   flex: 1;
-  padding: 1.5rem;
+  padding: 1.25rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  min-height: 0;
+}
+
+.filePreviewBanner {
+  padding: 0.5rem 1rem;
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--brand-accent);
+  flex-shrink: 0;
+}
+
+.removeFileBtn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .userBubble, .assistantBubble {
@@ -159,32 +185,114 @@
 }
 
 .inputArea {
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.25rem;
   background-color: var(--surface);
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.inputWrapper {
+  position: relative;
   display: flex;
-  gap: 0.75rem;
+  align-items: center;
+  background-color: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.35rem 0.75rem;
+  gap: 0.5rem;
+  transition: border-color 0.2s ease;
+}
+
+.inputWrapper:focus-within {
+  border-color: var(--brand-accent);
+}
+
+.attachContainer {
+  position: relative;
+}
+
+.attachBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: color 0.2s ease;
+}
+
+.attachBtn:hover {
+  color: var(--text-primary);
+}
+
+.attachMenu {
+  position: absolute;
+  bottom: 120%;
+  left: 0;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem;
+  gap: 0.2rem;
+  min-width: 150px;
+  z-index: 100;
+}
+
+.menuItem {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.2s;
+}
+
+.menuItem:hover {
+  background-color: var(--surface-card);
+  color: var(--brand-accent);
+}
+
+.hiddenInput {
+  display: none !important;
 }
 
 .textInput {
   flex: 1;
-  background-color: var(--surface-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
+  background: transparent;
+  border: none;
+  outline: none;
   color: var(--text-primary);
   font-size: 0.9rem;
+  padding: 0.5rem;
 }
 
 .sendBtn {
   background-color: var(--brand-accent);
   color: #ffffff;
   border: none;
-  padding: 0.85rem 1.25rem;
+  padding: 0.55rem 1rem;
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  transition: opacity 0.2s;
+}
+
+.sendBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Sidebar from '@/components/layout/Sidebar/Sidebar';
 import Header from '@/components/layout/Header/Header';
 import OnboardingWizard from '@/components/features/Onboarding/OnboardingWizard';
 import { apiRequest } from '@/lib/apiClient';
@@ -87,12 +86,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className={styles.dashboardLayout}>
-      <Sidebar 
-        onOpenSetupModal={() => setIsSetupOpen(true)} 
-        isSetupCompleted={Boolean(data?.user)}
-      />
-
+    <>
       <main className={styles.mainContent}>
         <Header />
 
@@ -160,7 +154,7 @@ export default function DashboardPage() {
             <div className={styles.sectionHeader}>
               <h3>Today&apos;s Plan</h3>
               <div className={styles.headerActions}>
-                <Link href="/assignments?action=new" className={styles.quickAddBtn}>
+                <Link href="/dashboard/assignments?action=new" className={styles.quickAddBtn}>
                   <FiPlus /> Add Assignment
                 </Link>
                 <Link href="/dashboard/planner" className={styles.subLink}>Full Schedule →</Link>
@@ -249,6 +243,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

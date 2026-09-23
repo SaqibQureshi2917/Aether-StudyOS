@@ -1,12 +1,11 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
-import { AppError } from '../middleware/error.middleware';
+import {AppError} from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
 export const getDashboardOverview = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-
     if (!userId) {
       throw new AppError('Unauthorized access', 401);
     }
@@ -22,41 +21,46 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
         planType: true,
       },
     });
-
     if (!user) {
       throw new AppError('User not found', 404);
     }
 
-    // 2. Fetch Today's Scheduled Tasks (Today's Plan)
+    // 2. Fetch Today's Scheduled Tasks (Today's Plan) using StudySession
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    const todayPlan = await prisma.plannerEntry.findMany({
+    const todayPlan = await prisma.studySession.findMany({
       where: {
         userId,
-        scheduledDate: {
+        scheduledStart: {
           gte: startOfToday,
           lte: endOfToday,
         },
       },
       include: {
-        assignment: {
-          select: { id: true, title: true, priority: true },
+        task: {
+          include: {
+            assignment: {
+              select: { id: true, title: true, priority: true },
+            },
+          },
         },
       },
-      orderBy: { startTime: 'asc' },
+      orderBy: { scheduledStart: 'asc' },
     });
 
-    // 3. Fetch Urgent Upcoming Deadlines (Next 7 Days)
+    // 3. Fetch Urgent Upcoming Deadlines (Next 7 Days) - Assignment uses course -> semester relation
     const sevenDaysLater = new Date();
     sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
     const upcomingDeadlines = await prisma.assignment.findMany({
       where: {
-        userId,
+        course: {
+          semester: { userId },
+        },
         status: { not: 'COMPLETED' },
         deadline: {
           gte: startOfToday,
@@ -75,6 +79,7 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
       (acc, item) => acc + Math.max(0, item.estimatedHours - item.completedHours),
       0
     );
+
     const availableStudyCapacity = user.dailyGoalHours * 3; // Capacity over next 3 days
     const isScheduleAtRisk = totalRemainingHours > availableStudyCapacity;
 

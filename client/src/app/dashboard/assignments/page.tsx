@@ -3,8 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import Sidebar from '@/components/layout/Sidebar/Sidebar';
-import Header from '@/components/layout/Header/Header';
+// import Header from '@/components/layout/Header/Header';
 import { apiRequest } from '@/lib/apiClient';
 import { 
   FiPlus, 
@@ -37,7 +36,6 @@ function AssignmentsContent() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Form & Submit States
   const [title, setTitle] = useState('');
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
@@ -45,7 +43,6 @@ function AssignmentsContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
 
-  // Auto-open Modal if redirected from Dashboard (+ Add Assignment)
   useEffect(() => {
     if (searchParams.get('action') === 'new') {
       setIsModalOpen(true);
@@ -129,107 +126,99 @@ function AssignmentsContent() {
   });
 
   return (
-    <div className={styles.layout}>
-      <Sidebar onOpenSetupModal={() => {}} />
+    <main className={styles.main}>
+      {/* <Header /> */}
 
-      <main className={styles.main}>
-        <Header />
-
-        <div className={styles.topHeader}>
-          <div>
-            <h1>Academic Assignments</h1>
-            <p>Manage your workload, task milestones, and effort estimation.</p>
-          </div>
-          <button 
-            type="button" 
-            onClick={() => {
-              setModalError('');
-              setIsModalOpen(true);
-            }} 
-            className={styles.addBtn}
-          >
-            <FiPlus /> Add Assignment
-          </button>
+      <div className={styles.topHeader}>
+        <div>
+          <h1>Academic Assignments</h1>
+          <p>Manage your workload, task milestones, and effort estimation.</p>
         </div>
+        <button 
+          type="button" 
+          onClick={() => {
+            setModalError('');
+            setIsModalOpen(true);
+          }} 
+          className={styles.addBtn}
+        >
+          <FiPlus /> Add Assignment
+        </button>
+      </div>
 
-        {/* Filter Controls */}
-        <div className={styles.filterRow}>
-          {['ALL', 'PENDING', 'COMPLETED'].map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={filter === f ? styles.activeFilter : styles.filterBtn}
-              onClick={() => setFilter(f)}
-            >
-              {f}
-            </button>
+      <div className={styles.filterRow}>
+        {['ALL', 'PENDING', 'COMPLETED'].map((f) => (
+          <button
+            key={f}
+            type="button"
+            className={filter === f ? styles.activeFilter : styles.filterBtn}
+            onClick={() => setFilter(f)}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className={skeletonStyles.cardsGrid}>
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className={`${skeletonStyles.skeletonBase} ${skeletonStyles.assignmentCard}`}>
+              <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardTag}`} />
+              <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardTitle}`} />
+              <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardProgress}`} />
+            </div>
           ))}
         </div>
+      ) : filteredAssignments.length > 0 ? (
+        <div className={styles.grid}>
+          {filteredAssignments.map((item) => {
+            const totalTasks = item.tasks.length;
+            const completedTasks = item.tasks.filter((t) => t.isCompleted).length;
+            const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            const isCompleted = item.status === 'COMPLETED';
 
-        {/* Assignment Skeleton Grid vs Real Content */}
-        {loading ? (
-          <div className={skeletonStyles.cardsGrid}>
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className={`${skeletonStyles.skeletonBase} ${skeletonStyles.assignmentCard}`}>
-                <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardTag}`} />
-                <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardTitle}`} />
-                <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardProgress}`} />
-              </div>
-            ))}
-          </div>
-        ) : filteredAssignments.length > 0 ? (
-          <div className={styles.grid}>
-            {filteredAssignments.map((item) => {
-              const totalTasks = item.tasks.length;
-              const completedTasks = item.tasks.filter((t) => t.isCompleted).length;
-              const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-              const isCompleted = item.status === 'COMPLETED';
-
-              return (
-                <div key={item.id} className={styles.card}>
-                  <div className={styles.cardHeader}>
-                    <span className={styles.courseBadge}>
-                      {item.course?.name || 'General Course'}
-                    </span>
-                    <span className={`${styles.priorityBadge} ${isCompleted ? styles.completedBadge : styles[item.priority.toLowerCase()]}`}>
-                      {isCompleted ? '✓ Completed' : `${item.priority} Priority`}
-                    </span>
-                  </div>
-
-                  <h3 className={styles.cardTitle}>{item.title}</h3>
-
-                  <div className={styles.cardMeta}>
-                    <span><FiCalendar /> Due: {new Date(item.deadline).toLocaleDateString()}</span>
-                    <span><FiClock /> {item.estimatedHours} Hours Est.</span>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className={styles.progressContainer}>
-                    <div className={styles.progressHeader}>
-                      <span>Progress ({completedTasks}/{totalTasks} Tasks)</span>
-                      <strong>{progressPct}%</strong>
-                    </div>
-                    <div className={styles.progressTrack}>
-                      <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
-                    </div>
-                  </div>
-
-                  <Link href={`/assignments/${item.id}`} className={styles.openBtn}>
-                    Workspace Details <FiArrowRight />
-                  </Link>
+            return (
+              <div key={item.id} className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span className={styles.courseBadge}>
+                    {item.course?.name || 'General Course'}
+                  </span>
+                  <span className={`${styles.priorityBadge} ${isCompleted ? styles.completedBadge : styles[item.priority.toLowerCase()]}`}>
+                    {isCompleted ? '✓ Completed' : `${item.priority} Priority`}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className={styles.emptyBox}>
-            <FiCheckCircle className={styles.emptyIcon} />
-            <p>No assignments found under this filter.</p>
-          </div>
-        )}
-      </main>
 
-      {/* Quick Add Assignment Modal */}
+                <h3 className={styles.cardTitle}>{item.title}</h3>
+
+                <div className={styles.cardMeta}>
+                  <span><FiCalendar /> Due: {new Date(item.deadline).toLocaleDateString()}</span>
+                  <span><FiClock /> {item.estimatedHours} Hours Est.</span>
+                </div>
+
+                <div className={styles.progressContainer}>
+                  <div className={styles.progressHeader}>
+                    <span>Progress ({completedTasks}/{totalTasks} Tasks)</span>
+                    <strong>{progressPct}%</strong>
+                  </div>
+                  <div className={styles.progressTrack}>
+                    <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+
+                <Link href={`/dashboard/assignments/${item.id}`} className={styles.openBtn}>
+                  Workspace Details <FiArrowRight />
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={styles.emptyBox}>
+          <FiCheckCircle className={styles.emptyIcon} />
+          <p>No assignments found under this filter.</p>
+        </div>
+      )}
+
       {isModalOpen && (
         <div className={styles.overlay} onClick={() => setIsModalOpen(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -238,7 +227,6 @@ function AssignmentsContent() {
               <button type="button" onClick={() => setIsModalOpen(false)}><FiX /></button>
             </div>
 
-            {/* Error Banner inside Modal */}
             {modalError && (
               <div className={styles.modalErrorBanner}>
                 <FiAlertTriangle />
@@ -299,7 +287,7 @@ function AssignmentsContent() {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

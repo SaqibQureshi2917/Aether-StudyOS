@@ -1,47 +1,34 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
-import { AppError } from '../middleware/error.middleware';
+import{ AppError } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
+// 1. Create Course
 export const createCourse = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    const { title, code, color, semesterName } = req.body;
+    const { name, code, creditHours, difficulty, priority, instructor, description, colorCode, semesterId } = req.body;
 
-    if (!title) {
-      throw new AppError('Course title / subject name is required', 400);
-    }
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (!name || !semesterId) throw new AppError('Course name and semester ID are required.', 400);
 
-    if (!userId) {
-      throw new AppError('Unauthorized access', 401);
-    }
-
-    let semesterId: string | undefined;
-    if (semesterName) {
-      let semester = await prisma.semester.findFirst({
-        where: { userId, name: semesterName },
-      });
-
-      if (!semester) {
-        semester = await prisma.semester.create({
-          data: {
-            userId,
-            name: semesterName,
-            startDate: new Date(),
-            endDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
-          },
-        });
-      }
-      semesterId = semester.id;
-    }
+    // Verify semester belongs to user
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId }
+    });
+    if (!semester) throw new AppError('Semester not found or unauthorized', 404);
 
     const course = await prisma.course.create({
       data: {
-        userId,
-        title,
-        code: code || null, // Optional code
-        color: color || '#6366f1',
-        semesterId: semesterId || null,
+        name,
+        code: code || null,
+        creditHours: creditHours ? parseInt(creditHours) : 3,
+        difficulty: difficulty ? parseInt(difficulty) : 3,
+        priority: priority ? parseInt(priority) : 3,
+        instructor: instructor || null,
+        description: description || null,
+        colorCode: colorCode || '#6366f1',
+        semesterId,
       },
     });
 
@@ -55,23 +42,120 @@ export const createCourse = async (req: AuthenticatedRequest, res: Response, nex
   }
 };
 
-export const getMyCourses = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+// 2. Get All Courses
+export const getCourses = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
+    const { semesterId } = req.query;
+
+    if (!userId) throw new AppError('Unauthorized access', 401);
+
+    const whereClause: any = {
+      semester: { userId }
+    };
+    if (semesterId) whereClause.semesterId = semesterId as string;
 
     const courses = await prisma.course.findMany({
-      where: { userId },
+      where: whereClause,
       include: {
-        materials: true,
+        semester: { select: { name: true } },
+        studyTasks: true,
         assignments: true,
-        semester: true,
       },
-      orderBy: { createdAt: 'desc' },
     });
 
     res.status(200).json({
       success: true,
       data: { courses },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 3. Get Course By ID
+export const getCourseById = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const course = await prisma.course.findFirst({
+      where: {
+        id,
+        semester: { userId }
+      },
+      include: {
+        semester: true,
+        assignments: true,
+        exams: true,
+        studyTasks: true,
+      },
+    });
+
+    if (!course) throw new AppError('Course not found', 404);
+
+    res.status(200).json({
+      success: true,
+      data: { course },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 4. Update Course
+export const updateCourse = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    const { name, code, creditHours, difficulty, priority, status, instructor, description, colorCode } = req.body;
+
+    const course = await prisma.course.findFirst({
+      where: { id, semester: { userId } }
+    });
+    if (!course) throw new AppError('Course not found', 404);
+
+    const updated = await prisma.course.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(code !== undefined && { code }),
+        ...(creditHours && { creditHours: parseInt(creditHours) }),
+        ...(difficulty && { difficulty: parseInt(difficulty) }),
+        ...(priority && { priority: parseInt(priority) }),
+        ...(status && { status }),
+        ...(instructor !== undefined && { instructor }),
+        ...(description !== undefined && { description }),
+        ...(colorCode && { colorCode }),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Course updated successfully',
+      data: { course: updated },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 5. Delete Course
+export const deleteCourse = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const course = await prisma.course.findFirst({
+      where: { id, semester: { userId } }
+    });
+    if (!course) throw new AppError('Course not found', 404);
+
+    await prisma.course.delete({ where: { id } });
+
+    res.status(200).json({
+      success: true,
+      message: 'Course deleted successfully',
     });
   } catch (error) {
     next(error);

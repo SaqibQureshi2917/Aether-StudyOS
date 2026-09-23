@@ -15,6 +15,9 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
     if (!file) {
       throw new AppError('Please attach a PDF or syllabus document file.', 400);
     }
+    if (!courseId) {
+      throw new AppError('Course ID is required for material upload.', 400);
+    }
 
     let extractedText = '';
 
@@ -26,13 +29,13 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
     }
 
     // Matching exact Prisma Material schema fields (fileUrl, fileType, title, courseId)
-    const newMaterial = await prisma.material.create({
+    const newMaterial = await prisma.courseMaterial.create({
       data: {
         title: courseName || file.originalname.replace(/\.[^/.]+$/, ''),
         fileUrl: file.path,
         fileType: file.mimetype,
         isIndexed: extractedText.length > 0,
-        ...(courseId ? { courseId } : {}),
+        courseId,
       },
     });
 
@@ -52,7 +55,7 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
 export const getUserMaterials = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     // Selects only valid fields defined in schema.prisma
-    const materials = await prisma.material.findMany({
+    const materials = await prisma.courseMaterial.findMany({
       select: {
         id: true,
         title: true,
