@@ -3,8 +3,8 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-// import Header from '@/components/layout/Header/Header';
 import { apiRequest } from '@/lib/apiClient';
+import { useToast } from '@/components/layout/toast/ToastContext';
 import { 
   FiPlus, 
   FiClock, 
@@ -17,6 +17,11 @@ import {
 import styles from './assignments.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
 
+interface TaskItem {
+  id: string;
+  isCompleted: boolean;
+}
+
 interface AssignmentItem {
   id: string;
   title: string;
@@ -26,12 +31,20 @@ interface AssignmentItem {
   estimatedHours: number;
   completedHours: number;
   course?: { name: string; colorCode: string };
-  tasks: Array<{ id: string; isCompleted: boolean }>;
+  tasks: TaskItem[];
+}
+
+interface CourseItem {
+  id: string;
+  name: string;
 }
 
 function AssignmentsContent() {
   const searchParams = useSearchParams();
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [courseId, setCourseId] = useState('');
+  
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,8 +52,9 @@ function AssignmentsContent() {
   const [title, setTitle] = useState('');
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
-  const [estimatedHours, setEstimatedHours] = useState(4);
+  const [estimatedMinutes, setEstimatedMinutes] = useState(240);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showToast } = useToast();
   const [modalError, setModalError] = useState('');
 
   useEffect(() => {
@@ -63,8 +77,20 @@ function AssignmentsContent() {
     }
   };
 
+  const fetchCourses = async () => {
+    try {
+      const res: any = await apiRequest('/courses', 'GET');
+      if (res.data?.courses) {
+        setCourses(res.data.courses);
+      }
+    } catch (err) {
+      console.warn('Courses fetch fallback:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAssignments();
+    fetchCourses();
   }, []);
 
   const minDateTime = new Date().toISOString().slice(0, 16);
@@ -72,6 +98,12 @@ function AssignmentsContent() {
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError('');
+
+    if (!courseId) {
+      setModalError('Please select a course for this assignment.');
+      return;
+    }
+
     const selectedDate = new Date(deadline);
     const now = new Date();
     const selectedYear = selectedDate.getFullYear();
@@ -98,13 +130,17 @@ function AssignmentsContent() {
         title: title.trim(),
         deadline,
         priority,
-        estimatedHours,
+        estimatedHours: estimatedMinutes / 60,
+        courseId,
       });
 
       setIsModalOpen(false);
       setTitle('');
       setDeadline('');
+      setCourseId('');
       setModalError('');
+
+      showToast('Assignment created successfully!', 'success');
       fetchAssignments();
     } catch (err: any) {
       console.error('Failed to create assignment:', err);
@@ -127,8 +163,6 @@ function AssignmentsContent() {
 
   return (
     <main className={styles.main}>
-      {/* <Header /> */}
-
       <div className={styles.topHeader}>
         <div>
           <h1>Academic Assignments</h1>
@@ -141,6 +175,7 @@ function AssignmentsContent() {
             setIsModalOpen(true);
           }} 
           className={styles.addBtn}
+          disabled={isSubmitting}
         >
           <FiPlus /> Add Assignment
         </button>
@@ -172,8 +207,8 @@ function AssignmentsContent() {
       ) : filteredAssignments.length > 0 ? (
         <div className={styles.grid}>
           {filteredAssignments.map((item) => {
-            const totalTasks = item.tasks.length;
-            const completedTasks = item.tasks.filter((t) => t.isCompleted).length;
+            const totalTasks = item.tasks?.length || 0;
+            const completedTasks = item.tasks?.filter((t) => t.isCompleted)?.length || 0;
             const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
             const isCompleted = item.status === 'COMPLETED';
 
@@ -183,7 +218,7 @@ function AssignmentsContent() {
                   <span className={styles.courseBadge}>
                     {item.course?.name || 'General Course'}
                   </span>
-                  <span className={`${styles.priorityBadge} ${isCompleted ? styles.completedBadge : styles[item.priority.toLowerCase()]}`}>
+                  <span className={`${styles.priorityBadge} ${isCompleted ? styles.completedBadge : styles[item.priority?.toLowerCase() || 'medium']}`}>
                     {isCompleted ? '✓ Completed' : `${item.priority} Priority`}
                   </span>
                 </div>
@@ -192,7 +227,7 @@ function AssignmentsContent() {
 
                 <div className={styles.cardMeta}>
                   <span><FiCalendar /> Due: {new Date(item.deadline).toLocaleDateString()}</span>
-                  <span><FiClock /> {item.estimatedHours} Hours Est.</span>
+                  <span><FiClock /> {formatStudyDuration(item.estimatedHours)} estimated</span>
                 </div>
 
                 <div className={styles.progressContainer}>
@@ -220,11 +255,11 @@ function AssignmentsContent() {
       )}
 
       {isModalOpen && (
-        <div className={styles.overlay} onClick={() => setIsModalOpen(false)}>
+        <div className={styles.overlay} onClick={() => !isSubmitting && setIsModalOpen(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3>Create New Assignment</h3>
-              <button type="button" onClick={() => setIsModalOpen(false)}><FiX /></button>
+              <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} aria-label="Close assignment form"><FiX /></button>
             </div>
 
             {modalError && (
@@ -236,6 +271,23 @@ function AssignmentsContent() {
 
             <form onSubmit={handleCreateAssignment} className={styles.form}>
               <div className={styles.group}>
+                <label>Select Course *</label>
+                <select 
+                  value={courseId} 
+                  onChange={(e) => setCourseId(e.target.value)} 
+                  required
+                  disabled={isSubmitting}
+                >
+                  <option value="">-- Choose a Course --</option>
+                  {Array.isArray(courses) && courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.group}>
                 <label>Assignment Title *</label>
                 <input 
                   type="text" 
@@ -243,6 +295,7 @@ function AssignmentsContent() {
                   placeholder="e.g. CNN Image Classification Report"
                   value={title} 
                   onChange={(e) => setTitle(e.target.value)} 
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -254,13 +307,14 @@ function AssignmentsContent() {
                   min={minDateTime}
                   value={deadline} 
                   onChange={(e) => setDeadline(e.target.value)} 
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className={styles.row}>
                 <div className={styles.group}>
                   <label>Priority</label>
-                  <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                  <select value={priority} onChange={(e) => setPriority(e.target.value)} disabled={isSubmitting}>
                     <option value="LOW">Low</option>
                     <option value="MEDIUM">Medium</option>
                     <option value="HIGH">High</option>
@@ -269,13 +323,15 @@ function AssignmentsContent() {
                 </div>
 
                 <div className={styles.group}>
-                  <label>Estimated Hours</label>
+                  <label>Estimated Study Time (minutes)</label>
                   <input 
                     type="number" 
-                    min="1" 
-                    max="50"
-                    value={estimatedHours} 
-                    onChange={(e) => setEstimatedHours(parseInt(e.target.value))} 
+                    min="7" 
+                    max="60000"
+                    step="1"
+                    value={estimatedMinutes} 
+                    onChange={(e) => setEstimatedMinutes(Math.max(7, parseInt(e.target.value, 10) || 7))} 
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -289,6 +345,14 @@ function AssignmentsContent() {
       )}
     </main>
   );
+}
+
+function formatStudyDuration(hours: number) {
+  const minutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return [wholeHours ? `${wholeHours} hr${wholeHours === 1 ? '' : 's'}` : '', remainingMinutes ? `${remainingMinutes} min` : '']
+    .filter(Boolean).join(' ') || '0 min';
 }
 
 export default function AssignmentsPage() {

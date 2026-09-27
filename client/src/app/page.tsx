@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTheme } from "@/context/ThemeContext";
-import { apiRequest } from '@/lib/apiClient';
+import { useAuth } from '@/context/AuthContext';
 import styles from '../styles/landing.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
 import Navbar from "@/components/layout/Navbar/Navbar";
@@ -12,43 +11,17 @@ import FeaturesPreview from "@/components/layout/FeaturesPreview/FeaturesPreview
 import Footer from "@/components/layout/Footer/Footer";
 
 export default function LandingPage() {
-  const { theme, toggleTheme } = useTheme();
   const router = useRouter();
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const { authStatus, user } = useAuth();
 
   useEffect(() => {
-    const verifyUserSession = async () => {
-      const token = localStorage.getItem('studyos_token');
-
-      // Agar Token nahi hai toh Landing Page render hone dein
-      if (!token) {
-        setIsCheckingSession(false);
-        return;
-      }
-
-      try {
-        // Express Backend Check
-        const data: any = await apiRequest('/auth/me', 'GET');
-        
-        if (data.user) {
-          // Valid Token -> Direct Dashboard Redirection
-          router.replace('/dashboard');
-        } else {
-          setIsCheckingSession(false);
-        }
-      } catch (error) {
-        // Expired / Broken Token -> Storage Cleanup
-        localStorage.removeItem('studyos_token');
-        localStorage.removeItem('studyos_user');
-        setIsCheckingSession(false);
-      }
-    };
-
-    verifyUserSession();
-  }, [router]);
+    if (authStatus === 'authenticated' && user) {
+      router.replace(user.isOnboarded ? '/dashboard' : '/onboarding');
+    }
+  }, [authStatus, router, user]);
 
   // Session verification ke waqt 0% inline CSS + Pure Skeleton Shimmer
-  if (isCheckingSession) {
+  if (authStatus === 'loading' || authStatus === 'authenticated') {
     return (
       <div className={skeletonStyles.landingContainer}>
         <div className={`${skeletonStyles.box} ${skeletonStyles.boxHeroBadge}`} />

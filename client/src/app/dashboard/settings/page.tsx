@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import Sidebar from '@/components/layout/Sidebar/Sidebar';
-import OnboardingWizard from '@/components/features/Onboarding/OnboardingWizard';
+import React, { useEffect, useState } from 'react';
+import { apiRequest } from '@/lib/apiClient';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import { 
   FiUser, 
   FiMail, 
@@ -10,35 +11,61 @@ import {
   FiSliders, 
   FiBell, 
   FiSave, 
-  FiTrash2, 
   FiCheck, 
-  FiLock 
 } from 'react-icons/fi';
 import styles from './settings.module.css';
 
 export default function SettingsPage() {
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const { user, setAuthenticatedUser } = useAuth();
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Profile & Preference States
-  const [fullName, setFullName] = useState('Qureshi Developer');
-  const [email, setEmail] = useState('qureshi@university.edu');
-  const [major, setMajor] = useState('Computer Science');
-  const [semester, setSemester] = useState('Semester 7');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [major, setMajor] = useState('');
+  const [semester, setSemester] = useState('');
   const [dailyHours, setDailyHours] = useState(3);
-  const [aiMode, setAiMode] = useState<'balanced' | 'rigorous'>('balanced');
-  const [enableNotifs, setEnableNotifs] = useState(true);
+  const [aiMode, setAiMode] = useState<'balanced' | 'rigorous' | 'exam_prep'>('balanced');
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!user) return;
+    setFullName(user.fullName || '');
+    setEmail(user.email || '');
+    setMajor(user.major || '');
+    setSemester(user.currentSemester || '');
+    setDailyHours(user.dailyGoalHours ?? 3);
+    const mode = user.aiMode?.toLowerCase();
+    setAiMode(mode === 'rigorous' || mode === 'exam_prep' ? mode : 'balanced');
+  }, [user]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const response: any = await apiRequest('/user/profile', 'PATCH', {
+        fullName,
+        major,
+        currentSemester: semester,
+        dailyGoalHours: dailyHours,
+        aiMode,
+      });
+      const updatedUser = response.data?.user;
+      if (!updatedUser) throw new Error('The updated profile was not returned by the server.');
+      setAuthenticatedUser(updatedUser);
+      setIsSaved(true);
+      window.setTimeout(() => setIsSaved(false), 3000);
+    } catch (error: any) {
+      setSaveError(error?.message || 'Could not save your profile. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className={styles.settingsLayout}>
-      <Sidebar onOpenSetupModal={() => setIsSetupOpen(true)} />
-
       <main className={styles.mainContent}>
         {/* Header */}
         <header className={styles.topHeader}>
@@ -54,9 +81,11 @@ export default function SettingsPage() {
             form="settingsForm" 
             className={styles.saveBtn}
           >
-            {isSaved ? <><FiCheck /> Preferences Saved!</> : <><FiSave /> Save Changes</>}
+            {isSaving ? 'Saving...' : isSaved ? <><FiCheck /> Preferences Saved!</> : <><FiSave /> Save Changes</>}
           </button>
         </header>
+
+        {saveError && <p role="alert">{saveError}</p>}
 
         <form id="settingsForm" onSubmit={handleSave} className={styles.formGrid}>
           
@@ -92,8 +121,8 @@ export default function SettingsPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
                     className={styles.input}
+                    disabled
                     required
                   />
                 </div>
@@ -115,20 +144,14 @@ export default function SettingsPage() {
 
               <div className={styles.inputGroup}>
                 <label className={styles.label}>Current Semester</label>
-                <select
+                <input
+                  type="text"
                   value={semester}
                   onChange={(e) => setSemester(e.target.value)}
-                  className={styles.select}
-                >
-                  <option value="Semester 1">Semester 1</option>
-                  <option value="Semester 2">Semester 2</option>
-                  <option value="Semester 3">Semester 3</option>
-                  <option value="Semester 4">Semester 4</option>
-                  <option value="Semester 5">Semester 5</option>
-                  <option value="Semester 6">Semester 6</option>
-                  <option value="Semester 7">Semester 7</option>
-                  <option value="Final Year / Thesis">Final Year / Thesis</option>
-                </select>
+                  className={styles.input}
+                  required
+                  maxLength={100}
+                />
               </div>
             </div>
           </section>
@@ -184,56 +207,29 @@ export default function SettingsPage() {
               <div className={styles.iconWrapper}><FiBell /></div>
               <div>
                 <h3>Notifications & Course Data</h3>
-                <p>Control deadline alerts and manage uploaded course outlines.</p>
+                <p>Notification delivery and course management are not available yet.</p>
               </div>
             </div>
 
             <div className={styles.toggleRow}>
               <div>
                 <strong className={styles.toggleTitle}>Deadline & Reschedule Alerts</strong>
-                <p className={styles.toggleSubtitle}>Receive automatic notifications when practice tasks are updated.</p>
+                <p className={styles.toggleSubtitle}>Notifications are not available yet.</p>
               </div>
-              <input
-                type="checkbox"
-                checked={enableNotifs}
-                onChange={(e) => setEnableNotifs(e.target.checked)}
-                className={styles.toggleCheckbox}
-              />
+              <span className={styles.toggleSubtitle}>Notification delivery is not available yet.</span>
             </div>
 
             <div className={styles.dangerZone}>
               <div>
-                <strong className={styles.dangerTitle}>Clear Active Course Syllabi</strong>
-                <p className={styles.dangerSubtitle}>Remove all uploaded course outlines and reset your planner engine.</p>
+                <strong className={styles.dangerTitle}>Course Data</strong>
+                <p className={styles.dangerSubtitle}>Manage your courses and semesters from the <Link href="/dashboard/courses">Courses workspace</Link>.</p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsSetupOpen(true)}
-                className={styles.resetBtn}
-              >
-                <FiTrash2 /> Re-upload Courses
-              </button>
             </div>
           </section>
 
         </form>
       </main>
 
-      {/* Onboarding / Setup Modal */}
-      {isSetupOpen && (
-        <div className={styles.modalOverlay} onClick={() => setIsSetupOpen(false)}>
-          <div className={styles.modalContainer} onClick={(e) => e.stopPropagation()}>
-            <button 
-              type="button" 
-              className={styles.closeModalBtn} 
-              onClick={() => setIsSetupOpen(false)}
-            >
-              ✕
-            </button>
-            <OnboardingWizard />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

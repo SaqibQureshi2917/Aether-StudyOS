@@ -140,12 +140,16 @@
 }
 
 @media (max-width:768px) {
+    .navbar { padding: 0 1rem; }
+    .logo { min-width: 0; font-size: 1.05rem; }
+    .betaBadge { display: none; }
     .desktopNav, .signInBtn{
         display: none;
     }
     .hamburgerBtn{
         display: flex;
     }
+    .mobileDrawer { top: 72px; height: calc(100dvh - 72px); padding: 2rem 1.25rem; overflow-y: auto; }
 }
 @media (max-width:400px) {
     .actions{

@@ -3,6 +3,7 @@ import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import AuthModal from '@/components/features/AuthModal/AuthModal';
+import { ToastProvider } from '@/components/layout/toast/ToastContext';
 
 export const metadata = {
   title: 'Aether StudyOS',
@@ -19,10 +20,11 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <AuthProvider>
-             {children}
-             <AuthModal />
+            <ToastProvider>
+              {children}
+              <AuthModal />
+            </ToastProvider>
           </AuthProvider>
-         
         </ThemeProvider>
       </body>
     </html>

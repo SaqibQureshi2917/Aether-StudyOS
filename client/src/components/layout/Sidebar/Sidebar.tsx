@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/apiClient';
@@ -12,15 +12,12 @@ import {
   FiSettings, 
   FiUploadCloud, 
   FiSliders, 
-  FiMenu, 
-  FiX,
-  FiChevronLeft,
-  FiChevronRight,
   FiChevronDown,
   FiHelpCircle,
   FiBarChart2,
   FiPlus,
-  FiMessageCircle
+  FiMessageCircle,
+  FiBookOpen,
 } from 'react-icons/fi';
 import styles from './Sidebar.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
@@ -34,14 +31,15 @@ interface ChatThreadItem {
 interface SidebarProps {
   onOpenSetupModal: () => void;
   isSetupCompleted?: boolean;
+  isCollapsed: boolean;
+  isMobileOpen: boolean;
+  onCloseMobile: () => void;
 }
 
-export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: SidebarProps) {
+export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, isCollapsed, isMobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [recentChats, setRecentChats] = useState<ChatThreadItem[]>([]);
   const [chatLoading, setChatLoading] = useState(true);
@@ -49,6 +47,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
   const mainTools = [
     { label: 'Overview', href: '/dashboard', icon: <FiHome /> },
     { label: 'Assignments', href: '/dashboard/assignments', icon: <FiCheckSquare /> },
+    { label: 'Courses', href: '/dashboard/courses', icon: <FiBookOpen /> },
     { label: 'AI Study Tutor', href: '/dashboard/chat', icon: <FiMessageSquare /> },
     { label: 'Semester Planner', href: '/dashboard/planner', icon: <FiCalendar /> },
   ];
@@ -58,7 +57,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
     { label: 'Analytics', href: '/dashboard/analytics', icon: <FiBarChart2 /> },
   ];
 
-  const fetchRecentChats = async () => {
+  const fetchRecentChats = useCallback(async () => {
     try {
       setChatLoading(true);
       const res: any = await apiRequest('/chat/threads', 'GET');
@@ -70,12 +69,15 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
     } finally {
       setChatLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    setIsMobileOpen(false);
-    fetchRecentChats();
-  }, []);
+    void fetchRecentChats();
+  }, [fetchRecentChats]);
+
+  useEffect(() => {
+    onCloseMobile();
+  }, [pathname, onCloseMobile]);
 
   const handleCreateNewChat = () => {
     router.push('/dashboard/chat?new=true');
@@ -83,21 +85,8 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
 
   return (
     <>
-      <div className={styles.mobileHeader}>
-        <Link href="/dashboard" className={styles.brandLogo}>
-          Aether <span className={styles.betaBadge}>StudyOS</span>
-        </Link>
-        <button 
-          type="button" 
-          className={styles.hamburgerBtn}
-          onClick={() => setIsMobileOpen((prev) => !prev)}
-        >
-          {isMobileOpen ? <FiX /> : <FiMenu />}
-        </button>
-      </div>
-
       {isMobileOpen && (
-        <div className={styles.mobileBackdrop} onClick={() => setIsMobileOpen(false)} />
+        <div className={styles.mobileBackdrop} onClick={onCloseMobile} />
       )}
 
       <aside 
@@ -107,26 +96,6 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
           ${isCollapsed ? styles.collapsed : ''}
         `}
       >
-        <div className={styles.brandContainer}>
-          <Link href="/dashboard" className={styles.brandLogo}>
-            <span className={styles.brandIcon}>A</span>
-            {!isCollapsed && (
-              <span className={styles.brandText}>
-                ether <span className={styles.betaBadge}>StudyOS</span>
-              </span>
-            )}
-          </Link>
-
-          <button 
-            type="button" 
-            className={styles.collapseToggleBtn}
-            onClick={() => setIsCollapsed((prev) => !prev)}
-            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {isCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
-          </button>
-        </div>
-
         <button 
           type="button" 
           onClick={handleCreateNewChat} 
@@ -157,14 +126,14 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
             );
           })}
 
-          {!isCollapsed && (
+          {!isCollapsed && !showMoreTools && (
             <button 
               type="button" 
               className={styles.seeMoreBtn}
               onClick={() => setShowMoreTools((prev) => !prev)}
             >
-              <span>{showMoreTools ? 'Show Less Tools' : 'See More Tools'}</span>
-              <FiChevronDown className={`${styles.chevron} ${showMoreTools ? styles.rotated : ''}`} />
+              <span>See More Tools</span>
+              <FiChevronDown className={styles.chevron} />
             </button>
           )}
 
@@ -182,6 +151,16 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
               </Link>
             );
           })}
+          {!isCollapsed && showMoreTools && (
+            <button 
+              type="button" 
+              className={styles.seeMoreBtn}
+              onClick={() => setShowMoreTools((prev) => !prev)}
+            >
+              <span>Show Less Tools</span>
+              <FiChevronDown className={`${styles.chevron} ${styles.rotated}`} />
+            </button>
+          )}
 
           {/* Recent Chats Section with Skeleton Fallback */}
           {!isCollapsed && (
@@ -229,7 +208,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false }: 
               <button 
                 type="button" 
                 onClick={() => {
-                  setIsMobileOpen(false);
+                  onCloseMobile();
                   onOpenSetupModal();
                 }} 
                 className={styles.setupBtn}

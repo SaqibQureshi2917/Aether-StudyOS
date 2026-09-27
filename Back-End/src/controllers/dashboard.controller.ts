@@ -25,6 +25,12 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
       throw new AppError('User not found', 404);
     }
 
+    const activeSemester = await prisma.semester.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
     // 2. Fetch Today's Scheduled Tasks (Today's Plan) using StudySession
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -43,6 +49,7 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
       include: {
         task: {
           include: {
+            course: { select: { name: true } },
             assignment: {
               select: { id: true, title: true, priority: true },
             },
@@ -56,16 +63,16 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
     const sevenDaysLater = new Date();
     sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
+    const threeDaysLater = new Date();
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+
     const upcomingDeadlines = await prisma.assignment.findMany({
       where: {
         course: {
           semester: { userId },
         },
         status: { not: 'COMPLETED' },
-        deadline: {
-          gte: startOfToday,
-          lte: sevenDaysLater,
-        },
+        deadline: { lte: sevenDaysLater },
       },
       include: {
         course: { select: { name: true, colorCode: true } },
@@ -74,8 +81,17 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
       take: 5,
     });
 
+    const urgentWorkload = await prisma.assignment.findMany({
+      where: {
+        course: { semester: { userId } },
+        status: { not: 'COMPLETED' },
+        deadline: { lte: threeDaysLater },
+      },
+      select: { estimatedHours: true, completedHours: true },
+    });
+
     // 4. Calculate Workload Risk (Schedule Risk Algorithm)
-    const totalRemainingHours = upcomingDeadlines.reduce(
+    const totalRemainingHours = urgentWorkload.reduce(
       (acc, item) => acc + Math.max(0, item.estimatedHours - item.completedHours),
       0
     );
@@ -102,10 +118,11 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
       data: {
         user: {
           fullName: user.fullName,
-          major: user.major || 'Computer Science',
-          semester: user.currentSemester || 'Semester 7',
+          major: user.major,
+          semester: user.currentSemester,
           planType: user.planType, // 'FREE' | 'PRO'
           dailyGoalHours: user.dailyGoalHours,
+          activeSemesterId: activeSemester?.id ?? null,
         },
         todayPlan,
         upcomingDeadlines,

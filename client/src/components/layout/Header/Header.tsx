@@ -3,13 +3,24 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FiUser, FiSettings, FiLogOut, FiChevronDown } from 'react-icons/fi';
+import { FiUser, FiSettings, FiLogOut, FiChevronDown, FiChevronLeft, FiChevronRight, FiMenu, FiX } from 'react-icons/fi';
 import ThemeToggler from '@/components/features/ThemeToggler/ThemeToggler';
+import { useAuth } from '@/context/AuthContext';
+import { apiRequest } from '@/lib/apiClient';
 import styles from './Header.module.css';
 
-export default function Header() {
+interface HeaderProps {
+  onToggleSidebar: () => void;
+  onToggleCollapse: () => void;
+  isSidebarCollapsed: boolean;
+  isMobileSidebarOpen: boolean;
+}
+
+export default function Header({ onToggleSidebar, onToggleCollapse, isSidebarCollapsed, isMobileSidebarOpen }: HeaderProps) {
   const router = useRouter();
+  const { user, clearAuthentication } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userData, setUserData] = useState<{
     fullName: string;
     major: string;
@@ -21,25 +32,25 @@ export default function Header() {
   });
 
   useEffect(() => {
-    const savedUserStr = localStorage.getItem('studyos_user');
-    if (savedUserStr) {
-      try {
-        const savedUser = JSON.parse(savedUserStr);
-        setUserData({
-          fullName: savedUser.fullName || savedUser.name || 'Student',
-          major: savedUser.major || '',
-          semester: savedUser.semester || savedUser.semesterName || savedUser.currentSemester || '',
-        });
-      } catch (e) {
-        console.error('Failed to parse studyos_user from localStorage', e);
-      }
-    }
-  }, []);
+    if (!user) return;
+    setUserData({
+      fullName: user.fullName || 'Student',
+      major: user.major || '',
+      semester: user.currentSemester || '',
+    });
+  }, [user]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('studyos_user');
-    router.push('/');
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await apiRequest('/auth/logout', 'POST');
+    } catch {
+      // Clear local state even when the server has already expired the session.
+    } finally {
+      clearAuthentication();
+      router.replace('/');
+    }
   };
 
   const semesterInfo = userData.major && userData.semester
@@ -52,7 +63,30 @@ export default function Header() {
 
   return (
     <header className={styles.headerContainer}>
-      {/* Left Welcome Title */}
+      <div className={styles.brandAndWelcome}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          onClick={onToggleSidebar}
+          aria-label={isMobileSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isMobileSidebarOpen}
+        >
+          {isMobileSidebarOpen ? <FiX /> : <FiMenu />}
+        </button>
+        <button
+          type="button"
+          className={styles.collapseButton}
+          onClick={onToggleCollapse}
+          title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isSidebarCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
+        </button>
+        <Link href="/dashboard" className={styles.brandLogo}>
+          Aether <span>StudyOS</span>
+        </Link>
+      </div>
+
       <div className={styles.titleBlock}>
         <h1 className={styles.greeting}>Welcome back, {firstName}!</h1>
         <p className={styles.subtitle}>{semesterInfo}</p>
@@ -60,11 +94,6 @@ export default function Header() {
 
       {/* Right Controls & Account Widget */}
       <div className={styles.actionsBlock}>
-        {/* Theme Switcher Button */}
-        <div className={styles.themeWrapper}>
-          <ThemeToggler />
-        </div>
-
         {/* User Account Profile Widget */}
         <div className={styles.profileWrapper}>
           <button 
@@ -99,9 +128,14 @@ export default function Header() {
                 <FiSettings /> Preferences
               </Link>
 
+              <div className={styles.themeMenuRow}>
+                <span>Appearance</span>
+                <ThemeToggler />
+              </div>
+
               <div className={styles.menuDivider} />
-              <button type="button" className={styles.logoutBtn} onClick={handleLogout}>
-                <FiLogOut /> Log Out
+              <button type="button" className={styles.logoutBtn} onClick={handleLogout} disabled={isLoggingOut}>
+                <FiLogOut /> {isLoggingOut ? 'Signing out...' : 'Log Out'}
               </button>
             </div>
           )}

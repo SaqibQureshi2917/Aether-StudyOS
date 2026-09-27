@@ -1,6 +1,5 @@
 import express, { Application } from 'express';
 import cors from 'cors';
-import path from 'path';
 import { ENV } from './config/env';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -14,14 +13,20 @@ import chatRoutes from './routes/chat.routes';
 import plannerRoutes from './routes/planner.routes';
 import sessionRoutes from './routes/session.routes';
 import recommendationRoutes from './routes/recommendation.routes';
+import semesterRoutes from './routes/semester.routes';
 
 const app: Application = express();
 
-app.use(cors({ origin: ENV.CORS_ORIGIN, credentials: true }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ENV.CORS_ORIGINS.includes(origin) && req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+  next();
+});
+app.use(cors({ origin: ENV.CORS_ORIGINS, credentials: true }));
 app.use(express.json());
 
-
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes Mounting
 app.use('/api/v1/auth', authRoutes);
@@ -29,6 +34,7 @@ app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/user', onboardingRouter);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/semesters', semesterRoutes);
 app.use('/api/v1/assignments', assignmentRoutes);
 app.use('/api/v1/materials', materialRoutes);
 app.use('/api/v1/chat', chatRoutes);

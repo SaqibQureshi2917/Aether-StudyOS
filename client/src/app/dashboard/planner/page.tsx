@@ -1,33 +1,56 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FiPlus, FiCalendar, FiClock } from 'react-icons/fi';
+import { apiRequest } from '@/lib/apiClient';
 import styles from './planner.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css'; 
 
 export default function PlannerPage() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetch('/api/dashboard', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setSessions(data.data.todayPlan || []);
-        }
-      })
-      .catch(err => {
-        console.error('Error fetching planner sessions:', err);
-      });
+  const loadPlannerData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response: any = await apiRequest('/dashboard/overview', 'GET');
+      setSessions(response.data?.todayPlan || []);
+      setActiveSemesterId(response.data?.user?.activeSemesterId || null);
+    } catch (err: any) {
+      setError(err?.message || 'Could not load your planner. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => { void loadPlannerData(); }, [loadPlannerData]);
+
   const handleAddSessionClick = () => {
-    console.log('Add Study Session clicked');
+    router.push('/dashboard/assignments?action=new');
+  };
+
+  const handleOptimizeSchedule = async () => {
+    if (!activeSemesterId) {
+      setError('Create an active semester and courses before generating a schedule.');
+      return;
+    }
+    try {
+      setIsGenerating(true);
+      setError('');
+      await apiRequest('/planner/generate', 'POST', { semesterId: activeSemesterId });
+      await loadPlannerData();
+    } catch (err: any) {
+      setError(err?.message || 'Could not generate a schedule. Check that study availability is configured.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -56,6 +79,7 @@ export default function PlannerPage() {
             A complete overview of your scheduled study sessions and focus tasks for today.
           </motion.p>
         </div>
+        {error && <p role="alert">{error}</p>}
         <motion.button 
           type="button"
           onClick={handleAddSessionClick}
@@ -63,7 +87,7 @@ export default function PlannerPage() {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
         >
-          <FiPlus /> Add Study Session
+          <FiPlus /> Add Assignment
         </motion.button>
       </header>
 
@@ -77,7 +101,9 @@ export default function PlannerPage() {
         >
           <h2 className={styles.sectionTitle}>Today&apos;s Sessions</h2>
 
-          {sessions.length === 0 ? (
+          {loading ? (
+            <div className={styles.emptyState} role="status">Loading your sessions...</div>
+          ) : sessions.length === 0 ? (
             <div className={styles.emptyState}>
               <FiCalendar className={styles.emptyIcon} />
               <p>No study sessions are scheduled for today.</p>
@@ -124,15 +150,17 @@ export default function PlannerPage() {
         >
           <h2 className={styles.sectionTitle}>Planner Tools</h2>
           <div className={styles.actionCard}>
-            <h3>AI Auto-Scheduler</h3>
-            <p>Schedule your pending assignments intelligently across your free slots.</p>
+            <h3>Adaptive Schedule Generator</h3>
+            <p>Schedule pending study tasks into your available study slots.</p>
             <motion.button 
               type="button"
+              onClick={handleOptimizeSchedule}
+              disabled={isGenerating}
               className={styles.secondaryBtn}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              Optimize Schedule
+              {isGenerating ? 'Generating...' : 'Optimize Schedule'}
             </motion.button>
           </div>
         </motion.div>

@@ -121,8 +121,11 @@
     font-size: 1rem;
 }
 @media (max-width:640px) {
+    .heroSection { min-height: auto; padding: 4rem 1rem 3rem; }
+    .contentContainer { width: 100%; }
     .headline{
-        font-size: 2.5rem;
+        font-size: clamp(2rem, 9vw, 2.5rem);
+        overflow-wrap: anywhere;
     }
     .subheading{
         font-size: 1.1rem;
@@ -139,6 +142,7 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         width: 100%;
+        box-sizing: border-box;
     }
     .primaryBtn{
         width: 100%;

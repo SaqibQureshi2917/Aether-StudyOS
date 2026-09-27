@@ -1,7 +1,8 @@
 .plannerContainer {
   background-color: var(--background);
   color: var(--text-primary);
-  min-height: 100vh;
+  min-height: calc(100vh - var(--dashboard-header-height, 76px));
+  min-height: calc(100dvh - var(--dashboard-header-height, 76px));
 }
 
 .plannerHeader {

@@ -1,54 +1,51 @@
-import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Response, NextFunction } from 'express';
+import { prisma } from '../config/db';
+import { AppError } from '../middleware/error.middleware';
+import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { PriorityEngine } from '../services/plannerEngine/priority.engine';
 import { SchedulingEngine } from '../services/plannerEngine/scheduling.engine';
 
-const prisma = new PrismaClient();
-
-export const generatePlannerSchedule = async (req: Request, res: Response) => {
+export const generatePlannerSchedule = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { semesterId, userId } = req.body;
+    const userId = req.user?.userId;
+    const { semesterId } = req.body;
 
-    if (!semesterId || !userId) {
-      return res.status(400).json({ error: 'semesterId and userId are required.' });
-    }
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof semesterId !== 'string' || !semesterId) throw new AppError('semesterId is required.', 400);
 
     // 1. Fetch Semester details to get date range
-    const semester = await prisma.semester.findUnique({
-      where: { id: semesterId },
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId },
       include: {
         courses: {
           include: {
             studyTasks: {
               where: { status: 'PENDING' },
+              include: { assignment: true },
             },
           },
         },
       },
     });
 
-    if (!semester) {
-      return res.status(404).json({ error: 'Semester not found.' });
-    }
+    if (!semester) throw new AppError('Semester not found.', 404);
 
     // 2. Fetch User's Availability Slots
     const availabilityRules = await prisma.availabilitySlot.findMany({
       where: { userId, isBlocked: false },
     });
 
-    if (availabilityRules.length === 0) {
-      return res.status(400).json({ error: 'No availability slots configured. Please set your study hours first.' });
-    }
+    if (availabilityRules.length === 0) throw new AppError('No availability slots configured. Please set your study hours first.', 400);
 
     // 3. Extract and score all pending tasks using PriorityEngine
-    const allTasks = semester.courses.flatMap(course => course.studyTasks);
+    const allTasks = semester.courses.flatMap((course) => course.studyTasks.map((task) => ({ ...task, course })));
     
     const tasksWithPriority = allTasks.map(task => {
       const priorityScore = PriorityEngine.calculatePriority({
         deadline: task.deadline,
         estimatedHours: task.estimatedHours,
-        difficulty: 'MEDIUM', // Can be dynamically mapped from related assignment/course
-        userPriority: 'MEDIUM',
+        difficulty: task.assignment?.difficulty ?? task.course.difficulty,
+        userPriority: task.assignment?.priority ?? task.course.priority,
       });
 
       return {
@@ -97,35 +94,31 @@ export const generatePlannerSchedule = async (req: Request, res: Response) => {
     // 6. Persist generated study sessions in the database
     // Clear previous scheduled sessions for these tasks to avoid duplicates
     const taskIds = tasksWithPriority.map(t => t.id);
-    await prisma.studySession.deleteMany({
-      where: {
-        taskId: { in: taskIds },
-        status: 'SCHEDULED',
-      },
+    const createdSessions = await prisma.$transaction(async (tx) => {
+      await tx.studySession.deleteMany({
+        where: { taskId: { in: taskIds }, userId, status: 'SCHEDULED' },
+      });
+      return Promise.all(generatedSessions.map((session) => tx.studySession.create({
+        data: {
+          taskId: session.taskId,
+          userId,
+          scheduledStart: session.startTime,
+          scheduledEnd: session.endTime,
+          plannedDuration: session.durationHours,
+          status: 'SCHEDULED',
+        },
+      })));
     });
 
-    const createdSessions = await prisma.$transaction(
-      generatedSessions.map(session =>
-        prisma.studySession.create({
-          data: {
-            taskId: session.taskId,
-            userId,
-            scheduledStart: session.startTime,
-            scheduledEnd: session.endTime,
-            plannedDuration: session.durationHours,
-            status: 'SCHEDULED',
-          },
-        })
-      )
-    );
-
     return res.status(200).json({
+      success: true,
+      data: {
       message: 'Semester schedule generated successfully via deterministic engine.',
       totalSessionsCreated: createdSessions.length,
       sessions: createdSessions,
+      },
     });
-  } catch (error: any) {
-    console.error('[PlannerController Error]:', error);
-    return res.status(500).json({ error: 'Internal server error while generating schedule.', details: error.message });
+  } catch (error) {
+    next(error);
   }
 };

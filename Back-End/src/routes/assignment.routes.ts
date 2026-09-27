@@ -4,6 +4,7 @@ import {
   getAssignments, 
   getAssignmentById, 
   addAssignmentTask,
+  regenerateAssignmentTasks,
   updateAssignment,
   deleteAssignment,
   toggleAssignmentTask,
@@ -24,6 +25,7 @@ router.patch('/:id/status', toggleAssignmentStatus);
 router.delete('/:id', deleteAssignment);
 
 // Tasks / Milestones
+router.post('/:id/tasks/regenerate', regenerateAssignmentTasks);
 router.post('/:id/tasks', addAssignmentTask);
 router.patch('/:id/tasks/:taskId', toggleAssignmentTask);
 router.delete('/:id/tasks/:taskId', deleteAssignmentTask);

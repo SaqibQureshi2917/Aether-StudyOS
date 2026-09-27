@@ -1,167 +1,180 @@
-// backend/src/controllers/session.controller.ts
-import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Response, NextFunction } from 'express';
+import { prisma } from '../config/db';
+import { AppError } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { ReschedulingEngine } from '../services/plannerEngine/rescheduling.engine';
 
-const prisma = new PrismaClient();
-
-// 1. Start Study Session (Connects with Focus Timer feature)
-export const startSession = async (req: AuthenticatedRequest, res: Response) => {
+export const startSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { sessionId } = req.body;
     const userId = req.user?.userId;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: 'sessionId is required.' });
-    }
+    const { sessionId } = req.body;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
 
     const session = await prisma.studySession.findFirst({
       where: { id: sessionId, userId },
+      include: { task: { select: { status: true } } },
     });
+    if (!session) throw new AppError('Study session not found.', 404);
+    if (session.status !== 'SCHEDULED') throw new AppError('Only scheduled sessions can be started.', 409);
+    if (session.task.status === 'COMPLETED') throw new AppError('This study task is already complete.', 409);
 
-    if (!session) {
-      return res.status(404).json({ error: 'Study session not found.' });
+    const now = new Date();
+    const updatedSession = await prisma.$transaction(async (tx) => {
+      const activeSession = await tx.studySession.findFirst({
+        where: { userId, status: 'IN_PROGRESS' },
+        select: { id: true },
+      });
+      if (activeSession) throw new AppError('Finish the active study session before starting another.', 409);
+
+      const result = await tx.studySession.updateMany({
+        where: { id: sessionId, userId, status: 'SCHEDULED' },
+        data: { status: 'IN_PROGRESS', startedAt: now },
+      });
+      if (result.count !== 1) throw new AppError('This study session has already changed state.', 409);
+      return tx.studySession.findUnique({ where: { id: sessionId } });
+    }, { isolationLevel: 'Serializable' });
+    res.status(200).json({ success: true, message: 'Study session started.', data: { session: updatedSession } });
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034') {
+      return next(new AppError('Another session started at the same time. Refresh and try again.', 409));
     }
-
-    const updatedSession = await prisma.studySession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'IN_PROGRESS',
-        startedAt: new Date(),
-      },
-    });
-
-    return res.status(200).json({
-      message: 'Study session started successfully.',
-      session: updatedSession,
-    });
-  } catch (error: any) {
-    console.error('[StartSession Error]:', error);
-    return res.status(500).json({ error: 'Internal server error.', details: error.message });
+    next(error);
   }
 };
 
-// 2. Complete Study Session (Records actual vs planned duration & updates performance history)
-export const completeSession = async (req: AuthenticatedRequest, res: Response) => {
+export const completeSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { sessionId, actualDurationHours } = req.body; // actualDuration in hours
     const userId = req.user?.userId;
+    const { sessionId } = req.body;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
 
-    if (!sessionId || actualDurationHours === undefined) {
-      return res.status(400).json({ error: 'sessionId and actualDurationHours are required.' });
+    const session = await prisma.studySession.findFirst({
+      where: { id: sessionId, userId },
+      include: { task: { include: { assignment: true } } },
+    });
+    if (!session) throw new AppError('Study session not found.', 404);
+    if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
+      throw new AppError('Only an active study session can be completed.', 409);
     }
+
+    const endedAt = new Date();
+    const elapsedMs = Math.max(0, endedAt.getTime() - session.startedAt.getTime() - session.pauseDuration * 60_000);
+    const actualDurationHours = elapsedMs / 3_600_000;
+    const isPartial = actualDurationHours < session.plannedDuration;
+    const status = isPartial ? 'PARTIALLY_COMPLETED' : 'COMPLETED';
+
+    const updatedSession = await prisma.$transaction(async (tx) => {
+      const changed = await tx.studySession.updateMany({
+        where: { id: sessionId, userId, status: 'IN_PROGRESS' },
+        data: { status, actualDuration: actualDurationHours, endedAt },
+      });
+      if (changed.count !== 1) throw new AppError('This study session has already changed state.', 409);
+
+      const taskAdjustedHours = session.task.adjustedHours + actualDurationHours;
+      await tx.studyTask.update({
+        where: { id: session.taskId },
+        data: {
+          adjustedHours: { increment: actualDurationHours },
+          status: taskAdjustedHours >= session.task.estimatedHours ? 'COMPLETED' : 'IN_PROGRESS',
+        },
+      });
+
+      if (session.task.assignmentId) {
+        const assignmentTasks = await tx.studyTask.findMany({
+          where: { assignmentId: session.task.assignmentId },
+          select: { id: true, status: true },
+        });
+        const allTasksCompleted = assignmentTasks.length > 0 && assignmentTasks.every((task) =>
+          task.id === session.taskId ? taskAdjustedHours >= session.task.estimatedHours : task.status === 'COMPLETED'
+        );
+        await tx.assignment.update({
+          where: { id: session.task.assignmentId },
+          data: {
+            completedHours: { increment: actualDurationHours },
+            status: allTasksCompleted ? 'COMPLETED' : 'IN_PROGRESS',
+          },
+        });
+      }
+
+      await tx.performanceRecord.create({
+        data: {
+          userId,
+          taskId: session.taskId,
+          estimatedHours: session.plannedDuration,
+          actualHours: actualDurationHours,
+          ratio: actualDurationHours / (session.plannedDuration || 1),
+        },
+      });
+
+      if (isPartial) {
+        const remainingHours = Math.max(0, session.plannedDuration - actualDurationHours);
+        await tx.plannerRecommendation.create({
+          data: {
+            userId,
+            type: 'MISSED_SESSION',
+            title: 'Partial Study Session Recorded',
+            message: `You completed ${actualDurationHours.toFixed(2)}h out of ${session.plannedDuration}h planned for "${session.task.title}". ${remainingHours.toFixed(2)}h remain.`,
+            severity: 'INFO',
+            relatedTaskId: session.taskId,
+            relatedCourseId: session.task.courseId,
+          },
+        });
+      }
+
+      return tx.studySession.findUnique({ where: { id: sessionId } });
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Study session completed and recorded.',
+      data: { session: updatedSession, isPartial },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markSessionMissed = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { sessionId } = req.body;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
 
     const session = await prisma.studySession.findFirst({
       where: { id: sessionId, userId },
       include: { task: true },
     });
-
-    if (!session) {
-      return res.status(404).json({ error: 'Study session not found.' });
+    if (!session) throw new AppError('Study session not found.', 404);
+    if (session.status !== 'SCHEDULED' || session.scheduledEnd > new Date()) {
+      throw new AppError('Only elapsed scheduled sessions can be marked missed.', 409);
     }
 
-    const endedAt = new Date();
-    const isPartial = actualDurationHours < session.plannedDuration;
-    const status = isPartial ? 'PARTIALLY_COMPLETED' : 'COMPLETED';
+    const updatedSession = await prisma.$transaction(async (tx) => {
+      const changed = await tx.studySession.updateMany({
+        where: { id: sessionId, userId, status: 'SCHEDULED' },
+        data: { status: 'MISSED', actualDuration: 0, endedAt: new Date() },
+      });
+      if (changed.count !== 1) throw new AppError('This study session has already changed state.', 409);
 
-    // Update session record
-    const updatedSession = await prisma.studySession.update({
-      where: { id: sessionId },
-      data: {
-        status,
-        actualDuration: actualDurationHours,
-        endedAt,
-      },
-    });
-
-    // Save performance history (Actual vs Estimated ratio for adaptive feedback)
-    const ratio = actualDurationHours / (session.plannedDuration || 1);
-    await prisma.performanceRecord.create({
-      data: {
-        userId: userId!,
-        taskId: session.taskId,
-        estimatedHours: session.plannedDuration,
-        actualHours: actualDurationHours,
-        ratio,
-      },
-    });
-
-    // If partially completed, calculate remaining effort and queue rescheduling if necessary
-    if (isPartial) {
-      const remainingHours = session.plannedDuration - actualDurationHours;
-      
-      // Log recommendation or create planner event for missed workload
-      await prisma.plannerRecommendation.create({
+      await tx.plannerRecommendation.create({
         data: {
-          userId: userId!,
+          userId,
           type: 'MISSED_SESSION',
-          title: 'Partial Study Session Recorded',
-          message: `You completed ${actualDurationHours}h out of ${session.plannedDuration}h planned for "${session.task.title}". Remaining ${remainingHours}h can be redistributed.`,
-          severity: 'INFO',
+          title: 'Study Session Missed',
+          message: `You missed your scheduled session for "${session.task.title}" (${session.plannedDuration}h).`,
+          severity: 'WARNING',
           relatedTaskId: session.taskId,
           relatedCourseId: session.task.courseId,
         },
       });
-    }
 
-    return res.status(200).json({
-      message: 'Session completed and recorded successfully.',
-      session: updatedSession,
-      isPartial,
-    });
-  } catch (error: any) {
-    console.error('[CompleteSession Error]:', error);
-    return res.status(500).json({ error: 'Internal server error.', details: error.message });
-  }
-};
-
-// 3. Mark Session Missed (Triggers automatic deficit detection)
-export const markSessionMissed = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { sessionId } = req.body;
-    const userId = req.user?.userId;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: 'sessionId is required.' });
-    }
-
-    const session = await prisma.studySession.findFirst({
-      where: { id: sessionId, userId },
-      include: { task: true },
+      return tx.studySession.findUnique({ where: { id: sessionId } });
     });
 
-    if (!session) {
-      return res.status(404).json({ error: 'Study session not found.' });
-    }
-
-    const updatedSession = await prisma.studySession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'MISSED',
-        actualDuration: 0.0,
-      },
-    });
-
-    // Create recommendation/event for missed session
-    await prisma.plannerRecommendation.create({
-      data: {
-        userId: userId!,
-        type: 'MISSED_SESSION',
-        title: 'Study Session Missed',
-        message: `You missed your scheduled session for "${session.task.title}" (${session.plannedDuration}h). Would you like to redistribute this workload?`,
-        severity: 'WARNING',
-        relatedTaskId: session.taskId,
-        relatedCourseId: session.task.courseId,
-      },
-    });
-
-    return res.status(200).json({
-      message: 'Session marked as missed. Recommendation generated.',
-      session: updatedSession,
-    });
-  } catch (error: any) {
-    console.error('[MissedSession Error]:', error);
-    return res.status(500).json({ error: 'Internal server error.', details: error.message });
+    res.status(200).json({ success: true, message: 'Study session marked missed.', data: { session: updatedSession } });
+  } catch (error) {
+    next(error);
   }
 };

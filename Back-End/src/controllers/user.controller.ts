@@ -6,20 +6,101 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 export const onboardUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    const { major, semester, studyGoalHours, aiMode } = req.body;
+    const { major, semester, semesterStartDate, semesterEndDate, studyGoalHours, aiMode } = req.body;
+    const rawCourses: unknown = req.body.courses ?? [];
 
     if (!userId) {
       throw new AppError('Unauthorized access', 401);
     }
 
-    const updatedUser = await prisma.user.update({
+    if (typeof major !== 'string' || typeof semester !== 'string') {
+      throw new AppError('Major and semester must be text values.', 400);
+    }
+
+    const normalizedMajor = major.trim();
+    const normalizedSemester = semester.trim();
+    if (normalizedMajor.length > 120 || normalizedSemester.length > 100) {
+      throw new AppError('Major or semester name is too long.', 400);
+    }
+    if (!Array.isArray(rawCourses) || rawCourses.length > 30 || rawCourses.some((course) => typeof course !== 'string')) {
+      throw new AppError('Courses must be a list of up to 30 course names.', 400);
+    }
+
+    const courseNames = [...new Map((rawCourses as string[]).map((name) => [name.trim().toLocaleLowerCase(), name.trim()])).values()];
+    if (courseNames.some((name) => name.length < 1 || name.length > 120)) {
+      throw new AppError('Each course name must be between 1 and 120 characters.', 400);
+    }
+
+    let semesterDates: { startDate: Date; endDate: Date } | undefined;
+    if (courseNames.length > 0) {
+      if (typeof semesterStartDate !== 'string' || typeof semesterEndDate !== 'string') {
+        throw new AppError('Semester start and end dates are required when adding courses.', 400);
+      }
+      const startDate = new Date(semesterStartDate);
+      const endDate = new Date(semesterEndDate);
+      if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || endDate <= startDate) {
+        throw new AppError('Semester dates are invalid. The end date must follow the start date.', 400);
+      }
+      semesterDates = { startDate, endDate };
+    }
+
+    if (aiMode !== undefined && !['balanced', 'rigorous', 'exam_prep'].includes(aiMode)) {
+      throw new AppError('AI mode is invalid.', 400);
+    }
+
+    const goalHours = studyGoalHours === undefined ? 3 : Number(studyGoalHours);
+    if (!Number.isFinite(goalHours) || goalHours < 0.5 || goalHours > 24) {
+      throw new AppError('Study goal must be between 0.5 and 24 hours per day.', 400);
+    }
+
+    const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      data: {
-        major: major || undefined,
-        currentSemester: semester || undefined,
-        dailyGoalHours: studyGoalHours ? parseFloat(studyGoalHours) : undefined,
-        aiMode: aiMode ? aiMode.toUpperCase() : undefined,
-      },
+      select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, aiMode: true, isOnboarded: true },
+    });
+    if (!currentUser) throw new AppError('User profile not found.', 404);
+    if (currentUser.isOnboarded) {
+      return res.status(200).json({ success: true, message: 'Onboarding is already complete.', data: { user: currentUser } });
+    }
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          major: normalizedMajor || null,
+          currentSemester: normalizedSemester || null,
+          dailyGoalHours: goalHours,
+          aiMode: aiMode?.toUpperCase() || 'BALANCED',
+          isOnboarded: true,
+        },
+        select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, aiMode: true, isOnboarded: true },
+      });
+
+      if (semesterDates && courseNames.length > 0) {
+        const existingSemester = await tx.semester.findFirst({
+          where: { userId, name: normalizedSemester, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        const targetSemester = existingSemester
+          ? await tx.semester.update({ where: { id: existingSemester.id }, data: semesterDates, select: { id: true } })
+          : await tx.semester.create({
+              data: { userId, name: normalizedSemester, ...semesterDates, status: 'ACTIVE' },
+              select: { id: true },
+            });
+
+        const existingCourses = await tx.course.findMany({
+          where: { semesterId: targetSemester.id },
+          select: { name: true },
+        });
+        const knownNames = new Set(existingCourses.map((course) => course.name.trim().toLocaleLowerCase()));
+        const newCourses = courseNames.filter((name) => !knownNames.has(name.toLocaleLowerCase()));
+        if (newCourses.length > 0) {
+          await tx.course.createMany({
+            data: newCourses.map((name) => ({ semesterId: targetSemester.id, name })),
+          });
+        }
+      }
+
+      return user;
     });
 
     res.status(200).json({
@@ -27,6 +108,69 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
       message: 'Onboarding data saved',
       data: { user: updatedUser },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserProfile = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+
+    const { fullName, major, currentSemester, dailyGoalHours, aiMode } = req.body;
+    if (typeof fullName !== 'string' || typeof major !== 'string' || typeof currentSemester !== 'string') {
+      throw new AppError('Name, major, and semester must be text values.', 400);
+    }
+
+    const normalizedName = fullName.trim();
+    const normalizedMajor = major.trim();
+    const normalizedSemester = currentSemester.trim();
+    const goalHours = Number(dailyGoalHours);
+    if (normalizedName.length < 2 || normalizedName.length > 100) {
+      throw new AppError('Full name must be between 2 and 100 characters.', 400);
+    }
+    if (normalizedMajor.length > 120 || normalizedSemester.length > 100) {
+      throw new AppError('Major or semester name is too long.', 400);
+    }
+    if (!Number.isFinite(goalHours) || goalHours < 0.5 || goalHours > 24) {
+      throw new AppError('Study goal must be between 0.5 and 24 hours per day.', 400);
+    }
+    if (!['balanced', 'rigorous', 'exam_prep'].includes(aiMode)) {
+      throw new AppError('AI mode is invalid.', 400);
+    }
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          fullName: normalizedName,
+          major: normalizedMajor || null,
+          currentSemester: normalizedSemester || null,
+          dailyGoalHours: goalHours,
+          aiMode: aiMode.toUpperCase(),
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          major: true,
+          currentSemester: true,
+          dailyGoalHours: true,
+          aiMode: true,
+          planType: true,
+          isOnboarded: true,
+        },
+      });
+
+      const activeSemester = await tx.semester.findFirst({ where: { userId, status: 'ACTIVE' } });
+      if (activeSemester && normalizedSemester) {
+        await tx.semester.update({ where: { id: activeSemester.id }, data: { name: normalizedSemester } });
+      }
+      return user;
+    });
+
+    res.status(200).json({ success: true, data: { user: updatedUser } });
   } catch (error) {
     next(error);
   }

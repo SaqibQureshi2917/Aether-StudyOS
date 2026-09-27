@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 // import Header from '@/components/layout/Header/Header';
 import { apiRequest } from '@/lib/apiClient';
+import { useToast } from '@/components/layout/toast/ToastContext';
 import { 
   FiArrowLeft, 
   FiCalendar, 
@@ -15,17 +16,16 @@ import {
   FiPlus, 
   FiZap, 
   FiPlay,
-  FiAlertTriangle,
-  FiX
 } from 'react-icons/fi';
 import styles from './assignmentDetail.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
+import ConfirmDialog from '@/components/layout/ConfirmDialog/ConfirmDialog';
 
 interface Task {
   id: string;
   title: string;
   estimatedHours: number;
-  isCompleted: boolean;
+  status: string;
 }
 
 interface AssignmentDetail {
@@ -50,15 +50,23 @@ export default function AssignmentDetailPage() {
   const [assignment, setAssignment] = useState<AssignmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   // Task Creation State
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskMinutes, setNewTaskMinutes] = useState(60);
   const [isAddingTask, setIsAddingTask] = useState(false);
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isGeneratingMilestones, setIsGeneratingMilestones] = useState(false);
+  const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+  const [regenerateError, setRegenerateError] = useState('');
 
   // Custom Delete Confirmation Modal States
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  
 
   // Silent Fetcher
   const fetchAssignmentDetail = useCallback(async (isInitial = false) => {
@@ -66,7 +74,8 @@ export default function AssignmentDetailPage() {
       if (isInitial) setLoading(true);
       const res: any = await apiRequest(`/assignments/${assignmentId}`, 'GET');
       if (res.data?.assignment) {
-        setAssignment(res.data.assignment);
+        const { studyTasks, ...assignmentData } = res.data.assignment;
+        setAssignment({ ...assignmentData, tasks: studyTasks || [] });
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load assignment details');
@@ -81,10 +90,14 @@ export default function AssignmentDetailPage() {
 
   const handleToggleTask = async (taskId: string) => {
     try {
+      setBusyTaskId(taskId);
       await apiRequest(`/assignments/${assignmentId}/tasks/${taskId}`, 'PATCH');
-      fetchAssignmentDetail(false);
-    } catch (err) {
+      await fetchAssignmentDetail(false);
+    } catch (err: any) {
       console.error('Failed to toggle task:', err);
+      showToast(err.message || 'Failed to update milestone.', 'error');
+    } finally {
+      setBusyTaskId(null);
     }
   };
 
@@ -96,12 +109,15 @@ export default function AssignmentDetailPage() {
       setIsAddingTask(true);
       await apiRequest(`/assignments/${assignmentId}/tasks`, 'POST', {
         title: newTaskTitle.trim(),
-        estimatedHours: 1,
+        estimatedHours: newTaskMinutes / 60,
       });
       setNewTaskTitle('');
-      fetchAssignmentDetail(false);
+      setNewTaskMinutes(60);
+      showToast('Milestone added successfully!', 'success');
+      await fetchAssignmentDetail(false);
     } catch (err) {
       console.error('Failed to add task:', err);
+      showToast('Failed to add milestone.', 'error');
     } finally {
       setIsAddingTask(false);
     }
@@ -109,19 +125,28 @@ export default function AssignmentDetailPage() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
+      setBusyTaskId(taskId);
       await apiRequest(`/assignments/${assignmentId}/tasks/${taskId}`, 'DELETE');
-      fetchAssignmentDetail(false);
-    } catch (err) {
+      showToast('Milestone deleted successfully.', 'info');
+      await fetchAssignmentDetail(false);
+    } catch (err: any) {
       console.error('Failed to delete task:', err);
+      showToast(err.message || 'Failed to delete milestone.', 'error');
+    } finally {
+      setBusyTaskId(null);
     }
   };
 
   const handleToggleStatus = async () => {
     try {
+      setIsUpdatingStatus(true);
       await apiRequest(`/assignments/${assignmentId}/status`, 'PATCH');
-      fetchAssignmentDetail(false);
-    } catch (err) {
+      await fetchAssignmentDetail(false);
+    } catch (err: any) {
       console.error('Failed to update assignment status:', err);
+      showToast(err.message || 'Failed to update assignment status.', 'error');
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -130,6 +155,8 @@ export default function AssignmentDetailPage() {
       setIsDeleting(true);
       setDeleteError('');
       await apiRequest(`/assignments/${assignmentId}`, 'DELETE');
+
+      showToast('Assignment deleted Succesfully.', 'info')
       router.push('/dashboard/assignments');
     } catch (err: any) {
       setDeleteError(err.message || 'Failed to delete assignment. Please try again.');
@@ -138,21 +165,30 @@ export default function AssignmentDetailPage() {
   };
 
   const handleAICoachBreakdown = async () => {
-    const defaultMilestones = [
-      'Understand Requirements & Specs',
-      'Dataset / Resource Preparation',
-      'Core Implementation / Architecture',
-      'Testing, Evaluation & Report Writing'
-    ];
-
-    for (const title of defaultMilestones) {
-      try {
-        await apiRequest(`/assignments/${assignmentId}/tasks`, 'POST', { title, estimatedHours: 1 });
-      } catch (err) {
-        console.error('AI Coach Task Add Error:', err);
-      }
+    if (isGeneratingMilestones || isAddingTask || busyTaskId) return;
+    if (assignment?.tasks.length) {
+      setRegenerateError('');
+      setIsRegenerateModalOpen(true);
+      return;
     }
-    fetchAssignmentDetail(false);
+    await generateMilestones();
+  };
+
+  const generateMilestones = async () => {
+    try {
+      setIsGeneratingMilestones(true);
+      setRegenerateError('');
+      await apiRequest(`/assignments/${assignmentId}/tasks/regenerate`, 'POST');
+      await fetchAssignmentDetail(false);
+      setIsRegenerateModalOpen(false);
+      showToast('Milestones regenerated successfully.', 'success');
+    } catch (err: any) {
+      console.error('AI Coach Task Generation Error:', err);
+      if (isRegenerateModalOpen) setRegenerateError(err.message || 'Failed to regenerate milestones.');
+      else showToast(err.message || 'Failed to generate milestones.', 'error');
+    } finally {
+      setIsGeneratingMilestones(false);
+    }
   };
 
   // CSS Skeleton Loader Block
@@ -199,8 +235,9 @@ export default function AssignmentDetailPage() {
     );
   }
 
-  const totalTasks = assignment.tasks.length;
-  const completedTasks = assignment.tasks.filter((t) => t.isCompleted).length;
+  // Safe checks added here to prevent undefined length crashes!
+  const totalTasks = assignment.tasks?.length || 0;
+  const completedTasks = assignment.tasks?.filter((t) => t.status === 'COMPLETED')?.length || 0;
   const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
@@ -211,7 +248,7 @@ export default function AssignmentDetailPage() {
         <Link href="/dashboard/assignments" className={styles.backBtn}>
           <FiArrowLeft /> Back to Assignments
         </Link>
-        <button 
+      <button
           type="button" 
           onClick={() => setIsDeleteModalOpen(true)} 
           className={styles.deleteBtn}
@@ -229,9 +266,10 @@ export default function AssignmentDetailPage() {
             <button 
               type="button" 
               onClick={handleToggleStatus}
+              disabled={isUpdatingStatus}
               className={assignment.status === 'COMPLETED' ? styles.statusCompletedBtn : styles.statusPendingBtn}
             >
-              {assignment.status === 'COMPLETED' ? '✓ Completed' : 'Mark as Completed'}
+              {isUpdatingStatus ? 'Updating...' : assignment.status === 'COMPLETED' ? '✓ Completed' : 'Mark as Completed'}
             </button>
           </div>
         </div>
@@ -244,7 +282,7 @@ export default function AssignmentDetailPage() {
             <FiCalendar /> Due Date: <strong>{new Date(assignment.deadline).toLocaleString()}</strong>
           </div>
           <div>
-            <FiClock /> Estimated Effort: <strong>{assignment.estimatedHours} Hours</strong>
+            <FiClock /> Estimated Effort: <strong>{formatStudyDuration(assignment.estimatedHours)}</strong>
           </div>
         </div>
 
@@ -274,21 +312,36 @@ export default function AssignmentDetailPage() {
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
               required
+              disabled={isAddingTask || isGeneratingMilestones}
             />
-            <button type="submit" disabled={isAddingTask}>
-              <FiPlus /> Add
+            <label className={styles.taskDurationField}>
+              Minutes
+              <input
+                type="number"
+                min="7"
+                max="60000"
+                step="1"
+                value={newTaskMinutes}
+                onChange={(e) => setNewTaskMinutes(Math.max(7, parseInt(e.target.value, 10) || 7))}
+                aria-label="Milestone estimated time in minutes"
+                disabled={isAddingTask || isGeneratingMilestones}
+              />
+            </label>
+            <button type="submit" disabled={isAddingTask || isGeneratingMilestones}>
+              <FiPlus /> {isAddingTask ? 'Adding...' : 'Add'}
             </button>
           </form>
 
           <div className={styles.taskList}>
-            {assignment.tasks.map((task) => (
-              <div key={task.id} className={`${styles.taskItem} ${task.isCompleted ? styles.completed : ''}`}>
-                <button type="button" onClick={() => handleToggleTask(task.id)} className={styles.checkBtn}>
-                  {task.isCompleted ? <FiCheckSquare className={styles.checkedIcon} /> : <FiSquare />}
+            {assignment.tasks?.map((task) => (
+              <div key={task.id} className={`${styles.taskItem} ${task.status === 'COMPLETED' ? styles.completed : ''}`}>
+                <button type="button" onClick={() => handleToggleTask(task.id)} className={styles.checkBtn} disabled={Boolean(busyTaskId) || isGeneratingMilestones} aria-label={task.status === 'COMPLETED' ? 'Mark milestone incomplete' : 'Mark milestone complete'}>
+                  {task.status === 'COMPLETED' ? <FiCheckSquare className={styles.checkedIcon} /> : <FiSquare />}
                 </button>
                 <span className={styles.taskTitle}>{task.title}</span>
-                <button type="button" onClick={() => handleDeleteTask(task.id)} className={styles.taskDeleteBtn}>
-                  <FiTrash2 />
+                <span className={styles.taskDuration}>{formatStudyDuration(task.estimatedHours)}</span>
+                <button type="button" onClick={() => handleDeleteTask(task.id)} className={styles.taskDeleteBtn} disabled={Boolean(busyTaskId) || isGeneratingMilestones} aria-label="Delete milestone">
+                  {busyTaskId === task.id ? '…' : <FiTrash2 />}
                 </button>
               </div>
             ))}
@@ -308,8 +361,8 @@ export default function AssignmentDetailPage() {
               <h4>AI Assignment Coach</h4>
             </div>
             <p>Need help breaking this assignment down into manageable study milestones?</p>
-            <button type="button" onClick={handleAICoachBreakdown} className={styles.aiBtn}>
-              Auto-Generate Milestones
+            <button type="button" onClick={handleAICoachBreakdown} className={styles.aiBtn} disabled={isGeneratingMilestones || isAddingTask || Boolean(busyTaskId)}>
+              {isGeneratingMilestones ? 'Generating milestones...' : totalTasks ? 'Regenerate Milestones' : 'Auto-Generate Milestones'}
             </button>
           </div>
 
@@ -323,55 +376,39 @@ export default function AssignmentDetailPage() {
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (
-        <div className={styles.deleteModalOverlay} onClick={() => setIsDeleteModalOpen(false)}>
-          <div className={styles.deleteModalCard} onClick={(e) => e.stopPropagation()}>
-            <button 
-              type="button" 
-              className={styles.closeModalBtn} 
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              <FiX />
-            </button>
-
-            <div className={styles.deleteModalHeader}>
-              <div className={styles.warningIconWrapper}>
-                <FiAlertTriangle className={styles.warningIcon} />
-              </div>
-              <div>
-                <h3>Delete Assignment?</h3>
-                <p>This action cannot be undone. All linked tasks will be permanently removed.</p>
-              </div>
-            </div>
-
-            {deleteError && (
-              <div className={styles.modalErrorBanner}>
-                <span>{deleteError}</span>
-              </div>
-            )}
-
-            <div className={styles.deleteModalActions}>
-              <button
-                type="button"
-                className={styles.cancelBtn}
-                onClick={() => setIsDeleteModalOpen(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={styles.confirmDeleteBtn}
-                onClick={confirmDeleteAssignment}
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Assignment'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this assignment?"
+          description="This permanently deletes the assignment, its milestones, and linked study sessions. This action cannot be undone."
+          confirmLabel="Yes, delete assignment"
+          busyLabel="Deleting assignment..."
+          isBusy={isDeleting}
+          errorMessage={deleteError}
+          tone="danger"
+          onCancel={() => setIsDeleteModalOpen(false)}
+          onConfirm={confirmDeleteAssignment}
+        />
+      )}
+      {isRegenerateModalOpen && (
+        <ConfirmDialog
+          title="Replace existing milestones?"
+          description="The current milestones and their linked scheduled study sessions will be removed and replaced with a new set. Any active study session must be stopped first."
+          confirmLabel="Yes, replace milestones"
+          busyLabel="Replacing milestones..."
+          isBusy={isGeneratingMilestones}
+          errorMessage={regenerateError}
+          onCancel={() => setIsRegenerateModalOpen(false)}
+          onConfirm={generateMilestones}
+        />
       )}
     </main>
   );
+}
+
+function formatStudyDuration(hours: number) {
+  const minutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return [wholeHours ? `${wholeHours} hr${wholeHours === 1 ? '' : 's'}` : '', remainingMinutes ? `${remainingMinutes} min` : '']
+    .filter(Boolean).join(' ') || '0 min';
 }

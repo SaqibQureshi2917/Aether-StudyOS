@@ -145,6 +145,11 @@
 }
 
 @media (max-width: 768px) {
-  .title { font-size: 2.25rem; }
+  .heroSection { padding: 3.5rem 1rem 2rem; }
+  .title { font-size: clamp(2rem, 8vw, 2.25rem); }
+  .frameworkSection { padding: 1rem; }
+  .stepCard { padding: 1.4rem; }
   .grid { grid-template-columns: 1fr; }
+  .trustSection { padding: 0 1rem; }
+  .trustCard { padding: 1.5rem 1rem; }
 }

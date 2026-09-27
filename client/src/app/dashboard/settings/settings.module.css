@@ -1,7 +1,7 @@
 .settingsLayout {
   display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100vh - var(--dashboard-header-height, 76px));
+  min-height: calc(100dvh - var(--dashboard-header-height, 76px));
   background-color: var(--background);
 }
 

@@ -9,7 +9,7 @@ export async function processChatMessage(userId: string, dto: ChatRequestDTO): P
   let sourceType: SourceType = 'GENERAL_AI';
   let citations: Citation[] = [];
   let contextData = '';
-  let systemPrompt = 'You are an advanced academic AI assistant for Aether StudyOS.';
+  let systemPrompt = 'You are a helpful and intelligent general academic AI assistant. Explain concepts clearly, concisely, and in plain readable Markdown. Avoid raw LaTeX symbols, complex math tags, or code-block math formatting so the output looks clean and professional.';
 
   if (mode === 'STUDY') {
     // 1. Generate query embedding using the centralized aiAdapter

@@ -10,7 +10,9 @@ export const createAssignment = async (req: AuthenticatedRequest, res: Response,
     const { title, description, courseId, deadline, difficulty, priority, estimatedHours } = req.body;
     
     if (!userId) throw new AppError('Unauthorized access', 401);
-    if (!title || !deadline) throw new AppError('Title and deadline are required.', 400);
+    if (typeof title !== 'string' || !title.trim() || title.trim().length > 200 || typeof courseId !== 'string' || !deadline) {
+      throw new AppError('A title, course, and deadline are required.', 400);
+    }
     
     const deadlineDate = new Date(deadline);
     const now = new Date();
@@ -35,15 +37,26 @@ export const createAssignment = async (req: AuthenticatedRequest, res: Response,
     });
     if (!course) throw new AppError('Course not found or unauthorized', 404);
 
+    const parsedEstimate = estimatedHours === undefined ? 1 : Number(estimatedHours);
+    if (!Number.isFinite(parsedEstimate) || parsedEstimate <= 0 || parsedEstimate > 1000) {
+      throw new AppError('Estimated hours must be greater than 0 and at most 1000.', 400);
+    }
+    if (difficulty !== undefined && !['EASY', 'MEDIUM', 'HARD'].includes(difficulty)) {
+      throw new AppError('Assignment difficulty is invalid.', 400);
+    }
+    if (priority !== undefined && !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
+      throw new AppError('Assignment priority is invalid.', 400);
+    }
+
     const assignment = await prisma.assignment.create({
       data: {
         courseId,
-        title,
+        title: title.trim(),
         description: description || null,
         deadline: deadlineDate,
         difficulty: difficulty || 'MEDIUM',
         priority: priority || 'MEDIUM',
-        estimatedHours: estimatedHours ? parseFloat(estimatedHours) : 1.0,
+        estimatedHours: parsedEstimate,
       },
       include: {
         course: { select: { name: true, colorCode: true } },
@@ -137,14 +150,21 @@ export const addAssignmentTask = async (req: AuthenticatedRequest, res: Response
       } 
     });
     if (!assignment) throw new AppError('Assignment not found', 404);
+    if (typeof title !== 'string' || !title.trim() || title.trim().length > 200) {
+      throw new AppError('Milestone title must be between 1 and 200 characters.', 400);
+    }
+    const parsedHours = estimatedHours === undefined ? 1 : Number(estimatedHours);
+    if (!Number.isFinite(parsedHours) || parsedHours <= 0 || parsedHours > 1000) {
+      throw new AppError('Milestone hours must be greater than 0 and at most 1000.', 400);
+    }
 
     const task = await prisma.studyTask.create({
       data: {
         courseId: assignment.courseId,
         assignmentId: id,
-        title,
+        title: title.trim(),
         deadline: assignment.deadline,
-        estimatedHours: estimatedHours ? parseFloat(estimatedHours) : 1.0,
+        estimatedHours: parsedHours,
       },
     });
 
@@ -153,6 +173,50 @@ export const addAssignmentTask = async (req: AuthenticatedRequest, res: Response
       message: 'Milestone task added',
       data: { task },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Replace the generated milestone set atomically. Row locking makes concurrent
+// regenerate requests serialize instead of leaving duplicate sets behind.
+export const regenerateAssignmentTasks = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+
+    const assignment = await prisma.assignment.findFirst({
+      where: { id, course: { semester: { userId } } },
+      select: { id: true, courseId: true, deadline: true },
+    });
+    if (!assignment) throw new AppError('Assignment not found', 404);
+
+    const titles = [
+      'Understand Requirements & Specs',
+      'Dataset / Resource Preparation',
+      'Core Implementation / Architecture',
+      'Testing, Evaluation & Report Writing',
+    ];
+    const tasks = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Assignment" WHERE "id" = ${id} FOR UPDATE`;
+      const activeSession = await tx.studySession.findFirst({
+        where: { task: { assignmentId: id }, status: 'IN_PROGRESS' },
+        select: { id: true },
+      });
+      if (activeSession) throw new AppError('Finish or stop the active study session before regenerating milestones.', 409);
+      await tx.studyTask.deleteMany({ where: { assignmentId: id } });
+      const created = [];
+      for (const title of titles) {
+        created.push(await tx.studyTask.create({
+          data: { courseId: assignment.courseId, assignmentId: id, title, deadline: assignment.deadline, estimatedHours: 1 },
+        }));
+      }
+      await tx.assignment.update({ where: { id }, data: { status: 'PENDING' } });
+      return created;
+    });
+
+    res.status(200).json({ success: true, message: 'Milestones regenerated successfully', data: { tasks } });
   } catch (error) {
     next(error);
   }
@@ -173,16 +237,35 @@ export const updateAssignment = async (req: AuthenticatedRequest, res: Response,
     });
     if (!assignment) throw new AppError('Assignment not found', 404);
 
+    if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.trim().length > 200)) {
+      throw new AppError('Assignment title must be between 1 and 200 characters.', 400);
+    }
+    const deadlineDate = deadline === undefined ? undefined : new Date(deadline);
+    if (deadlineDate && !Number.isFinite(deadlineDate.getTime())) throw new AppError('Invalid deadline date.', 400);
+    if (priority !== undefined && !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
+      throw new AppError('Assignment priority is invalid.', 400);
+    }
+    if (difficulty !== undefined && !['EASY', 'MEDIUM', 'HARD'].includes(difficulty)) {
+      throw new AppError('Assignment difficulty is invalid.', 400);
+    }
+    if (status !== undefined && !['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE', 'CANCELLED'].includes(status)) {
+      throw new AppError('Assignment status is invalid.', 400);
+    }
+    const estimate = estimatedHours === undefined ? undefined : Number(estimatedHours);
+    if (estimate !== undefined && (!Number.isFinite(estimate) || estimate <= 0 || estimate > 1000)) {
+      throw new AppError('Estimated hours must be greater than 0 and at most 1000.', 400);
+    }
+
     const updated = await prisma.assignment.update({
       where: { id },
       data: {
-        ...(title && { title: title.trim() }),
+        ...(title !== undefined && { title: title.trim() }),
         ...(description !== undefined && { description }),
-        ...(deadline && { deadline: new Date(deadline) }),
+        ...(deadlineDate && { deadline: deadlineDate }),
         ...(priority && { priority }),
         ...(difficulty && { difficulty }),
         ...(status && { status }),
-        ...(estimatedHours !== undefined && { estimatedHours: parseFloat(estimatedHours) }),
+        ...(estimate !== undefined && { estimatedHours: estimate }),
       },
     });
 
@@ -243,29 +326,15 @@ export const toggleAssignmentTask = async (req: AuthenticatedRequest, res: Respo
 
     // Toggle Task State using status field
     const newStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
-    const updatedTask = await prisma.studyTask.update({
-      where: { id: taskId },
-      data: { status: newStatus },
+    const { updatedTask, newAssignmentStatus } = await prisma.$transaction(async (tx) => {
+      const updatedTask = await tx.studyTask.update({ where: { id: taskId }, data: { status: newStatus } });
+      const allTasks = await tx.studyTask.findMany({ where: { assignmentId: id }, select: { status: true } });
+      const newAssignmentStatus = allTasks.length > 0 && allTasks.every((item) => item.status === 'COMPLETED')
+        ? 'COMPLETED'
+        : allTasks.some((item) => item.status === 'IN_PROGRESS' || item.status === 'COMPLETED') ? 'IN_PROGRESS' : 'PENDING';
+      await tx.assignment.update({ where: { id }, data: { status: newAssignmentStatus } });
+      return { updatedTask, newAssignmentStatus };
     });
-
-    // Check all tasks status to auto-update Assignment Status
-    const allTasks = await prisma.studyTask.findMany({ where: { assignmentId: id } });
-    const totalTasks = allTasks.length;
-    const completedCount = allTasks.filter(t => t.status === 'COMPLETED').length;
-
-    let newAssignmentStatus = assignment.status;
-    if (totalTasks > 0 && completedCount === totalTasks) {
-      newAssignmentStatus = 'COMPLETED';
-    } else if (assignment.status === 'COMPLETED' && completedCount < totalTasks) {
-      newAssignmentStatus = 'IN_PROGRESS';
-    }
-
-    if (newAssignmentStatus !== assignment.status) {
-      await prisma.assignment.update({
-        where: { id },
-        data: { status: newAssignmentStatus }
-      });
-    }
 
     res.status(200).json({
       success: true,
@@ -290,7 +359,9 @@ export const deleteAssignmentTask = async (req: AuthenticatedRequest, res: Respo
     });
     if (!assignment) throw new AppError('Assignment not found', 404);
 
-    await prisma.studyTask.delete({ where: { id: taskId } });
+    const task = await prisma.studyTask.findFirst({ where: { id: taskId, assignmentId: id } });
+    if (!task) throw new AppError('Milestone not found.', 404);
+    await prisma.studyTask.delete({ where: { id: task.id } });
 
     res.status(200).json({
       success: true,

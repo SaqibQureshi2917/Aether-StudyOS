@@ -1,0 +1,116 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 12, 24, 0.68);
+  backdrop-filter: blur(7px);
+  animation: overlayIn 140ms ease-out;
+}
+
+.dialog {
+  position: relative;
+  width: min(100%, 440px);
+  padding: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-card);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+  animation: dialogIn 180ms ease-out;
+}
+
+.closeButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  font-size: 1.35rem;
+}
+
+.warning { color: #d97706; background: rgba(245, 158, 11, 0.14); }
+.danger { color: #dc2626; background: rgba(239, 68, 68, 0.13); }
+
+.copy h2 {
+  margin: 0 2rem 0.5rem 0;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 750;
+}
+
+.copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.error {
+  margin-top: 1rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  font-size: 0.82rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+.cancelButton, .confirmButton {
+  min-height: 42px;
+  padding: 0.65rem 1rem;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, border-color 120ms ease;
+}
+
+.cancelButton {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.confirmButton { border: 0; color: white; }
+.warningButton { background: var(--brand-accent); }
+.dangerButton { background: #dc2626; }
+.cancelButton:hover, .confirmButton:hover { transform: translateY(-1px); }
+.cancelButton:disabled, .confirmButton:disabled, .closeButton:disabled { opacity: 0.55; cursor: wait; }
+
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (max-width: 480px) {
+  .dialog { padding: 1.35rem; border-radius: 16px; }
+  .actions { flex-direction: column-reverse; }
+  .cancelButton, .confirmButton { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .dialog { animation: none; }
+}

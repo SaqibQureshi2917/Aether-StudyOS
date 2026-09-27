@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '@/components/layout/Header/Header';
-import OnboardingWizard from '@/components/features/Onboarding/OnboardingWizard';
 import { apiRequest } from '@/lib/apiClient';
 import { 
   FiBook, 
@@ -29,11 +27,15 @@ interface DashboardData {
   };
   todayPlan: Array<{
     id: string;
-    title: string;
-    startTime: string;
-    durationMins: number;
+    scheduledStart: string;
+    plannedDuration: number;
     status: string;
-    priority: string;
+    startedAt: string | null;
+    task: {
+      title: string;
+      assignment?: { title: string; priority: string } | null;
+      course?: { name: string } | null;
+    };
   }>;
   upcomingDeadlines: Array<{
     id: string;
@@ -41,6 +43,8 @@ interface DashboardData {
     deadline: string;
     estimatedHours: number;
     completedHours: number;
+    status: string;
+    priority: string;
     course?: { name: string; colorCode: string };
   }>;
   scheduleRisk: {
@@ -63,21 +67,40 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(Date.now());
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setLoadError('');
       const res: any = await apiRequest('/dashboard/overview', 'GET');
       if (res.data) {
         setData(res.data);
+      } else {
+        setLoadError('Dashboard data is unavailable right now. Please try again.');
       }
     } catch (err) {
-      console.warn('Dashboard live API fetch fallback:', err);
+      console.warn('Dashboard request failed:', err);
+      setLoadError('Could not load your dashboard. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStartSession = async (sessionId: string) => {
+    try {
+      setUpdatingSessionId(sessionId);
+      await apiRequest('/sessions/start', 'POST', { sessionId });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error('Could not start study session:', err);
+      setLoadError('Could not start this study session. Please try again.');
+    } finally {
+      setUpdatingSessionId(null);
     }
   };
 
@@ -85,11 +108,28 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    if (!data?.todayPlan.some((session) => session.status === 'IN_PROGRESS')) return;
+    const timerId = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [data?.todayPlan]);
+
+  const handleCompleteSession = async (sessionId: string) => {
+    try {
+      setUpdatingSessionId(sessionId);
+      await apiRequest('/sessions/complete', 'POST', { sessionId });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error('Could not complete study session:', err);
+      setLoadError('Could not complete this study session. Please try again.');
+    } finally {
+      setUpdatingSessionId(null);
+    }
+  };
+
   return (
     <>
       <main className={styles.mainContent}>
-        <Header />
-
         {/* Schedule Risk Warning Alert Box */}
         {data?.scheduleRisk?.isAtRisk && (
           <div className={styles.riskAlertBox}>
@@ -110,7 +150,7 @@ export default function DashboardPage() {
             <FiClock className={styles.statIcon} />
             <div>
               <span className={styles.statNumber}>
-                {data?.user?.dailyGoalHours || 3.0} Hours/Day
+                {data?.user?.dailyGoalHours ?? '—'} Hours/Day
               </span>
               <span className={styles.statLabel}>Daily Target</span>
             </div>
@@ -120,7 +160,7 @@ export default function DashboardPage() {
             <FiBook className={styles.statIcon} />
             <div>
               <span className={styles.statNumber}>
-                {data?.upcomingDeadlines?.length || 0} Pending
+                {data ? data.upcomingDeadlines.length : '—'} Pending
               </span>
               <span className={styles.statLabel}>Active Deadlines</span>
             </div>
@@ -130,7 +170,7 @@ export default function DashboardPage() {
             <FiTarget className={styles.statIcon} />
             <div>
               <span className={styles.statNumber}>
-                {data?.weakTopics?.length ? `${data.weakTopics.length} Topics` : 'Optimal'}
+                {data ? data.weakTopics.length ? `${data.weakTopics.length} Topics` : 'None identified' : '—'}
               </span>
               <span className={styles.statLabel}>Needing Revision</span>
             </div>
@@ -140,7 +180,7 @@ export default function DashboardPage() {
             <FiZap className={styles.statIcon} />
             <div>
               <span className={styles.planBadge}>
-                {data?.user?.planType || 'FREE'}
+                {data?.user?.planType || '—'}
               </span>
               <span className={styles.statLabel}>Account Tier</span>
             </div>
@@ -166,20 +206,46 @@ export default function DashboardPage() {
                 <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardFull}`} />
                 <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardFull}`} />
               </div>
+            ) : loadError ? (
+              <div className={styles.emptyState} role="alert">
+                <p>{loadError}</p>
+                <button type="button" onClick={fetchDashboardData}>Retry</button>
+              </div>
             ) : data?.todayPlan && data.todayPlan.length > 0 ? (
               <div className={styles.planList}>
                 {data.todayPlan.map((item) => (
                   <div key={item.id} className={styles.planItem}>
                     <div className={styles.planTime}>
-                      {item.startTime || '10:00'}
+                      {new Date(item.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     <div className={styles.planDetails}>
-                      <strong>{item.title}</strong>
-                      <span>{item.durationMins} Mins • {item.priority} Priority</span>
+                      <strong>{item.task.title}</strong>
+                      <span>
+                        {item.task.course?.name ? `${item.task.course.name} · ` : ''}
+                        {Math.round(item.plannedDuration * 60)} Mins · {item.task.assignment?.priority || 'MEDIUM'} Priority
+                        {item.status === 'IN_PROGRESS' && item.startedAt && ` · ${Math.floor(Math.max(0, clockNow - new Date(item.startedAt).getTime()) / 60000)} min elapsed`}
+                      </span>
                     </div>
-                    <button type="button" className={styles.startSessionBtn}>
-                      <FiPlay /> Start
-                    </button>
+                    {item.status === 'SCHEDULED' && (
+                      <button
+                        type="button"
+                        className={styles.startSessionBtn}
+                        onClick={() => handleStartSession(item.id)}
+                        disabled={updatingSessionId === item.id}
+                      >
+                        <FiPlay /> {updatingSessionId === item.id ? 'Starting…' : 'Start'}
+                      </button>
+                    )}
+                    {item.status === 'IN_PROGRESS' && (
+                      <button
+                        type="button"
+                        className={styles.startSessionBtn}
+                        onClick={() => handleCompleteSession(item.id)}
+                        disabled={updatingSessionId === item.id}
+                      >
+                        {updatingSessionId === item.id ? 'Saving…' : 'Complete'}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -188,6 +254,42 @@ export default function DashboardPage() {
                 <FiCheckCircle className={styles.checkIcon} />
                 <p>No study sessions scheduled for today. You&apos;re all caught up!</p>
               </div>
+            )}
+          </div>
+
+          <div className={styles.sectionBlock}>
+            <div className={styles.sectionHeader}>
+              <h3>Upcoming Assignments</h3>
+              <Link href="/dashboard/assignments" className={styles.subLink}>View all</Link>
+            </div>
+            {loading ? (
+              <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardFull}`} />
+            ) : loadError ? (
+              <p role="alert">{loadError}</p>
+            ) : data?.upcomingDeadlines.length ? (
+              <div className={styles.deadlineList}>
+                {data.upcomingDeadlines.map((assignment) => {
+                  const isOverdue = new Date(assignment.deadline).getTime() < Date.now();
+                  const progress = assignment.estimatedHours > 0
+                    ? Math.min(100, Math.round((assignment.completedHours / assignment.estimatedHours) * 100))
+                    : 0;
+                  return (
+                    <Link key={assignment.id} href={`/dashboard/assignments/${assignment.id}`} className={styles.deadlineCard}>
+                      <div className={styles.deadlineHeading}>
+                        <strong>{assignment.title}</strong>
+                        <span className={isOverdue ? styles.overdueLabel : styles.deadlineLabel}>
+                          {isOverdue ? 'Overdue' : new Date(assignment.deadline).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <span className={styles.deadlineMeta}>
+                        {assignment.course?.name || 'Course'} · {assignment.priority} priority · {progress}% effort recorded
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={styles.emptyState}>No assignments are due in the next seven days.</div>
             )}
           </div>
 
@@ -213,36 +315,17 @@ export default function DashboardPage() {
             ) : (
               <div className={styles.recommendationCard}>
                 <p className={styles.recomText}>
-                  Upload course syllabi in Course Setup to unlock real-time adaptive AI recommendations.
+                  No learning recommendations are available yet. They will appear when the backend has relevant study progress to evaluate.
                 </p>
-                <button 
-                  type="button" 
-                  onClick={() => setIsSetupOpen(true)} 
-                  className={styles.actionBtn}
-                >
-                  Setup Courses Now
-                </button>
+                <Link href="/dashboard/settings" className={styles.actionBtn}>
+                  Review Academic Profile <FiArrowRight />
+                </Link>
               </div>
             )}
           </div>
         </div>
       </main>
 
-      {/* Onboarding Setup Modal Overlay */}
-      {isSetupOpen && (
-        <div className={styles.modalOverlay} onClick={() => setIsSetupOpen(false)}>
-          <div className={styles.modalContainer} onClick={(e) => e.stopPropagation()}>
-            <button 
-              type="button" 
-              className={styles.closeModalBtn} 
-              onClick={() => setIsSetupOpen(false)}
-            >
-              ✕
-            </button>
-            <OnboardingWizard />
-          </div>
-        </div>
-      )}
     </>
   );
 }

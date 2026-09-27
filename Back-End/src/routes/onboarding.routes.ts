@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { completeOnboarding } from '../controllers/onboarding.controller';
+import { onboardUser } from '../controllers/user.controller';
 import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -7,6 +7,6 @@ const router = Router();
 router.use(authenticate);
 
 
-router.post('/onboarding', completeOnboarding);
+router.post('/onboarding', onboardUser);
 
 export default router;

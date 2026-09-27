@@ -14,9 +14,10 @@ import {
   FiEyeOff,
   FiAlertCircle
 } from "react-icons/fi";
-import { useAuthModal } from "@/context/AuthContext";
+import { useAuth, useAuthModal } from "@/context/AuthContext";
 import styles from "./AuthModal.module.css";
 import { apiRequest } from "@/lib/apiClient";
+import { useToast } from '@/components/layout/toast/ToastContext';
 
 export default function AuthModal() {
   const {
@@ -27,6 +28,7 @@ export default function AuthModal() {
     setAuthMode,
   } = useAuthModal();
   const router = useRouter();
+  const { setAuthenticatedUser } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -37,6 +39,7 @@ export default function AuthModal() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
+  const { showToast } = useToast();
 
   // Helper function: Safely parse error into clean text string
   const parseApiError = (err: any) => {
@@ -118,22 +121,21 @@ export default function AuthModal() {
 
       const res: any = await apiRequest(endpoint, "POST", payload);
 
-      const token = res.token || res.data?.token;
+      if (typeof res.token === 'string') {
+        sessionStorage.setItem('studyos_token', res.token);
+      }
+
       const user = res.user || res.data?.user;
 
-      if (token) {
-        localStorage.setItem("studyos_token", token);
-        localStorage.setItem("token", token);
+      if (!user) {
+        throw new Error('Authentication response was incomplete. Please try again.');
       }
 
-      if (user) {
-        localStorage.setItem("studyos_user", JSON.stringify({
-          fullName: user.fullName || fullName || "Student",
-          major: user.major || "",
-          semester: user.currentSemester || user.semester || "",
-          isOnboarded: user.isOnboarded || false,
-        }));
-      }
+      setAuthenticatedUser(user);
+      showToast(
+        authMode === "signup" ? "Account created successfully!" : "Logged in successfully!", 
+        "success"
+      );
 
       // Cleanup and Redirect
       handleModalClose();
@@ -316,8 +318,8 @@ export default function AuthModal() {
                     onChange={(e) => setPassword(e.target.value)}
                     className={styles.inputPassword}
                     required
-                    maxLength={20}
-                    minLength={6}
+                    maxLength={128}
+                    minLength={authMode === 'signup' ? 8 : undefined}
                   />
                   <button
                     type="button"

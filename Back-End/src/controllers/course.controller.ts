@@ -3,6 +3,15 @@ import { prisma } from '../config/db';
 import{ AppError } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
+const parseScaleValue = (value: unknown, fieldName: string, min: number, max: number, fallback: number) => {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new AppError(`${fieldName} must be between ${min} and ${max}.`, 400);
+  }
+  return parsed;
+};
+
 // 1. Create Course
 export const createCourse = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -10,7 +19,9 @@ export const createCourse = async (req: AuthenticatedRequest, res: Response, nex
     const { name, code, creditHours, difficulty, priority, instructor, description, colorCode, semesterId } = req.body;
 
     if (!userId) throw new AppError('Unauthorized access', 401);
-    if (!name || !semesterId) throw new AppError('Course name and semester ID are required.', 400);
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof semesterId !== 'string') {
+      throw new AppError('A course name (up to 120 characters) and semester ID are required.', 400);
+    }
 
     // Verify semester belongs to user
     const semester = await prisma.semester.findFirst({
@@ -20,11 +31,11 @@ export const createCourse = async (req: AuthenticatedRequest, res: Response, nex
 
     const course = await prisma.course.create({
       data: {
-        name,
-        code: code || null,
-        creditHours: creditHours ? parseInt(creditHours) : 3,
-        difficulty: difficulty ? parseInt(difficulty) : 3,
-        priority: priority ? parseInt(priority) : 3,
+        name: name.trim(),
+        code: typeof code === 'string' ? code.trim() || null : null,
+        creditHours: parseScaleValue(creditHours, 'Credit hours', 1, 10, 3),
+        difficulty: parseScaleValue(difficulty, 'Difficulty', 1, 5, 3),
+        priority: parseScaleValue(priority, 'Priority', 1, 5, 3),
         instructor: instructor || null,
         description: description || null,
         colorCode: colorCode || '#6366f1',
@@ -109,6 +120,9 @@ export const updateCourse = async (req: AuthenticatedRequest, res: Response, nex
     const userId = req.user?.userId;
     const { id } = req.params;
     const { name, code, creditHours, difficulty, priority, status, instructor, description, colorCode } = req.body;
+    if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 120)) {
+      throw new AppError('Course name must be between 1 and 120 characters.', 400);
+    }
 
     const course = await prisma.course.findFirst({
       where: { id, semester: { userId } }
@@ -118,11 +132,11 @@ export const updateCourse = async (req: AuthenticatedRequest, res: Response, nex
     const updated = await prisma.course.update({
       where: { id },
       data: {
-        ...(name && { name }),
+        ...(name !== undefined && { name: name.trim() }),
         ...(code !== undefined && { code }),
-        ...(creditHours && { creditHours: parseInt(creditHours) }),
-        ...(difficulty && { difficulty: parseInt(difficulty) }),
-        ...(priority && { priority: parseInt(priority) }),
+        ...(creditHours !== undefined && { creditHours: parseScaleValue(creditHours, 'Credit hours', 1, 10, 3) }),
+        ...(difficulty !== undefined && { difficulty: parseScaleValue(difficulty, 'Difficulty', 1, 5, 3) }),
+        ...(priority !== undefined && { priority: parseScaleValue(priority, 'Priority', 1, 5, 3) }),
         ...(status && { status }),
         ...(instructor !== undefined && { instructor }),
         ...(description !== undefined && { description }),
