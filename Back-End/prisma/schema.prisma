@@ -108,6 +108,7 @@ model User {
   performanceRecords    PerformanceRecord[]
   conversations         Conversation[]
   authSessions          AuthSession[]
+  passwordResetTokens   PasswordResetToken[]
 }
 
 model AuthSession {
@@ -119,6 +120,28 @@ model AuthSession {
   createdAt DateTime  @default(now())
 
   @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model AuthLoginAttempt {
+  id        String   @id @default(uuid())
+  emailHash String
+  ipHash    String
+  createdAt DateTime @default(now())
+
+  @@index([emailHash, createdAt])
+  @@index([ipHash, createdAt])
 }
 
 model Subscription {
@@ -206,10 +229,13 @@ model CourseMaterial {
   courseId      String
   course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title         String
-  fileUrl       String
+  fileUrl       String?
+  storageKey    String?
   fileType      String?
+  fileSizeBytes Int      @default(0)
   extractedText String?  @db.Text
   isIndexed     Boolean  @default(false)
+  processingStatus String @default("UPLOADED")
   metadata      Json?    // Extracted topics, page count, structure
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

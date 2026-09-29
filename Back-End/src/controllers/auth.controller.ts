@@ -5,8 +5,11 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { comparePassword, hashPassword } from '../utils/password.util';
 import { generateToken } from '../utils/jwt.util';
 import { ENV } from '../config/env';
+import { createHash, randomBytes } from 'crypto';
+import { assertLoginAllowed, clearFailedLogins, normalizeLoginEmail, recordFailedLogin } from '../services/auth-security.service';
+import { sendPasswordResetEmail } from '../services/email.service';
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const normalizeEmail = normalizeLoginEmail;
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isTrustedCrossSiteRequest = (req: Request) => {
   const origin = req.headers.origin;
@@ -119,11 +122,23 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       throw new AppError('Invalid email or password.', 401);
     }
 
+    if (!(await assertLoginAllowed(normalizedEmail, req))) {
+      res.setHeader('Retry-After', '900');
+      throw new AppError('Too many sign-in attempts. Please wait 15 minutes and try again.', 429);
+    }
+
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!user) throw new AppError('Invalid email or password.', 401);
+    if (!user) {
+      await recordFailedLogin(normalizedEmail, req);
+      throw new AppError('Invalid email or password.', 401);
+    }
 
     const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) throw new AppError('Invalid email or password.', 401);
+    if (!isPasswordValid) {
+      await recordFailedLogin(normalizedEmail, req);
+      throw new AppError('Invalid email or password.', 401);
+    }
+    await clearFailedLogins(normalizedEmail);
 
     const authSession = await prisma.authSession.create({
       data: { userId: user.id, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
@@ -149,6 +164,70 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   } catch (error) {
     next(error);
   }
+};
+
+export const requestPasswordReset = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
+    const throttleKey = isValidEmail(email) ? email : 'invalid-reset-address';
+    if (!(await assertLoginAllowed(throttleKey, req))) {
+      res.setHeader('Retry-After', '900');
+      return res.status(429).json({ success: false, error: { message: 'Too many requests. Please wait 15 minutes and try again.' } });
+    }
+    await recordFailedLogin(throttleKey, req);
+    if (!isValidEmail(email) || email.length > 254) {
+      return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+    }
+
+    if (!ENV.RESEND_API_KEY || !ENV.RESET_EMAIL_FROM) {
+      throw new AppError('Password reset email is not configured yet.', 503);
+    }
+
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, fullName: true } });
+    if (user) {
+      const rawToken = randomBytes(32).toString('base64url');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60_000);
+      await prisma.$transaction(async (tx) => {
+        await tx.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+        await tx.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+      });
+      const resetUrl = new URL('/forgot-password', ENV.APP_BASE_URL);
+      resetUrl.searchParams.set('token', rawToken);
+      try {
+        await sendPasswordResetEmail(user.email, user.fullName, resetUrl.toString());
+      } catch {
+        await prisma.passwordResetToken.deleteMany({ where: { tokenHash, usedAt: null } });
+        return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+      }
+    }
+    return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+  } catch (error) { return next(error); }
+};
+
+export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = req.body?.token;
+    const password = req.body?.password;
+    if (typeof token !== 'string' || token.length < 32 || token.length > 128 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      throw new AppError('Use a valid reset link and a password between 8 and 128 characters.', 400);
+    }
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+      select: { id: true, userId: true },
+    });
+    if (!resetToken) throw new AppError('This reset link is invalid or expired. Request a new one.', 400);
+    const hashedPassword = await hashPassword(password);
+    await prisma.$transaction(async (tx) => {
+      const consumed = await tx.passwordResetToken.updateMany({ where: { id: resetToken.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      if (consumed.count !== 1) throw new AppError('This reset link is invalid or expired. Request a new one.', 400);
+      await tx.user.update({ where: { id: resetToken.userId }, data: { password: hashedPassword } });
+      await tx.authSession.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.passwordResetToken.updateMany({ where: { userId: resetToken.userId, usedAt: null }, data: { usedAt: new Date() } });
+    });
+    return res.status(200).json({ success: true, message: 'Password updated. Please sign in with your new password.' });
+  } catch (error) { return next(error); }
 };
 
 // 3. Get Current Authenticated User Profile

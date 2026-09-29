@@ -115,8 +115,11 @@ const deleteSemester = async (req, res, next) => {
         const semester = await db_1.prisma.semester.findFirst({ where: { id, userId }, select: { id: true } });
         if (!semester)
             throw new error_middleware_1.AppError('Semester not found.', 404);
+        const courseCount = await db_1.prisma.course.count({ where: { semesterId: id } });
+        if (courseCount > 0)
+            throw new error_middleware_1.AppError('This semester still has subjects. Archive or delete empty subjects first; academic records are never cascaded by semester deletion.', 409);
         await db_1.prisma.semester.delete({ where: { id } });
-        res.status(200).json({ success: true, message: 'Semester and its linked course data were deleted.' });
+        res.status(200).json({ success: true, message: 'Semester deleted.' });
     }
     catch (error) {
         next(error);

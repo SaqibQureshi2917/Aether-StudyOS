@@ -178,10 +178,20 @@ export default function PlannerPage() {
   };
 
   const actOnSession = async (session: StudySession, action: 'start' | 'complete' | 'missed') => {
+    let actualMinutes: number | undefined;
+    if (action === 'complete') {
+      const enteredMinutes = window.prompt('Actual study time in minutes (1–720):', String(Math.min(Math.round(session.plannedDuration * 60), 720)));
+      if (enteredMinutes === null) return;
+      actualMinutes = Number(enteredMinutes);
+      if (!Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 720) {
+        setError('Enter actual study time as a whole number from 1 to 720 minutes.');
+        return;
+      }
+    }
     setActingSessionId(session.id);
     setError('');
     try {
-      await apiRequest(`/sessions/${action}`, 'POST', { sessionId: session.id });
+      await apiRequest(`/sessions/${action}`, 'POST', { sessionId: session.id, ...(actualMinutes === undefined ? {} : { actualMinutes }) });
       await loadOverview();
     } catch (err: unknown) {
       setError(errorText(err, 'This study session could not be updated. Refresh and try again.'));
@@ -296,7 +306,7 @@ export default function PlannerPage() {
             return <section className={styles.metricsGrid} aria-label="Semester workload summary">
               <article className={styles.metricCard}><span>Open study tasks</span><strong>{overview.capacity.taskCount}</strong><small>Based on remaining task effort</small></article>
               <article className={styles.metricCard}><span>Available study time</span><strong>{overview.capacity.availableHours.toFixed(1)}h</strong><small>Across your semester availability</small></article>
-              <article className={styles.metricCard}><span>Session progress in this view</span><strong>{completedSessions}/{overview.capacity.sessionCount}</strong><div className={styles.progressTrack} role="progressbar" aria-label="Completed study sessions in the selected calendar view" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progressPercent}%` }} /></div><small>{progressPercent}% of listed sessions completed</small></article>
+              <article className={styles.metricCard}><span>Session progress in this view</span><strong>{completedSessions}/{overview.capacity.sessionCount}</strong><progress className={styles.progressBar} value={progressPercent} max={100} aria-label="Completed study sessions in the selected calendar view" /><small>{progressPercent}% of listed sessions completed</small></article>
               <article className={`${styles.metricCard} ${overview.capacity.conflictCount ? styles.metricWarning : ''}`}><span>Workload conflicts</span><strong>{overview.capacity.conflictCount}</strong><small>{overview.capacity.unscheduledHours.toFixed(1)}h cannot fit before current deadlines</small></article>
             </section>;
           })()}
@@ -314,7 +324,7 @@ export default function PlannerPage() {
                 const canMiss = session.status === 'SCHEDULED' && end <= new Date();
                 return <article key={session.id} className={styles.sessionCard}>
                   <div className={styles.sessionTime}><FiClock /><strong>{start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong><span>{start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span></div>
-                  <div className={styles.sessionDetails}><span className={styles.courseLabel} style={{ borderColor: session.task.course.colorCode || undefined }}>{session.task.course.name}</span><h3>{session.task.title}</h3><p>{session.task.assignment?.title || 'Study task'} · {session.plannedDuration.toFixed(1)}h planned</p></div>
+                  <div className={styles.sessionDetails}><span className={styles.courseLabel}>{session.task.course.name}</span><h3>{session.task.title}</h3><p>{session.task.assignment?.title || 'Study task'} · {session.plannedDuration.toFixed(1)}h planned</p></div>
                   <div className={styles.sessionActions}><span className={`${styles.statusBadge} ${styles[`status${session.status}`] || ''}`}>{session.status.replaceAll('_', ' ').toLowerCase()}</span>{session.status === 'SCHEDULED' && <button type="button" disabled={busy} onClick={() => void actOnSession(session, canMiss ? 'missed' : 'start')}>{busy ? 'Saving…' : canMiss ? 'Mark missed' : 'Start'}</button>}{session.status === 'IN_PROGRESS' && <button type="button" disabled={busy} onClick={() => void actOnSession(session, 'complete')}>{busy ? 'Saving…' : 'Complete'}</button>}</div>
                 </article>;
               })}</div>}

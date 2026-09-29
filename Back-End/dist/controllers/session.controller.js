@@ -22,6 +22,9 @@ const startSession = async (req, res, next) => {
         if (session.task.status === 'COMPLETED')
             throw new error_middleware_1.AppError('This study task is already complete.', 409);
         const now = new Date();
+        if (now.getTime() < session.scheduledStart.getTime() - 15 * 60_000) {
+            throw new error_middleware_1.AppError('This session can be started up to 15 minutes before its planned time.', 409);
+        }
         const updatedSession = await db_1.prisma.$transaction(async (tx) => {
             const activeSession = await tx.studySession.findFirst({
                 where: { userId, status: 'IN_PROGRESS' },
@@ -50,7 +53,7 @@ exports.startSession = startSession;
 const completeSession = async (req, res, next) => {
     try {
         const userId = req.user?.userId;
-        const { sessionId } = req.body;
+        const { sessionId, actualMinutes } = req.body;
         if (!userId)
             throw new error_middleware_1.AppError('Unauthorized access', 401);
         if (typeof sessionId !== 'string' || !sessionId)
@@ -64,9 +67,15 @@ const completeSession = async (req, res, next) => {
         if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
             throw new error_middleware_1.AppError('Only an active study session can be completed.', 409);
         }
+        if (actualMinutes !== undefined && (!Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 720)) {
+            throw new error_middleware_1.AppError('Actual study time must be between 1 and 720 minutes.', 400);
+        }
         const endedAt = new Date();
         const elapsedMs = Math.max(0, endedAt.getTime() - session.startedAt.getTime() - session.pauseDuration * 60_000);
-        const actualDurationHours = elapsedMs / 3_600_000;
+        if (actualMinutes === undefined && elapsedMs > 12 * 60 * 60_000) {
+            throw new error_middleware_1.AppError('This timer has been running for over 12 hours. Submit the actual study minutes to record it accurately.', 400);
+        }
+        const actualDurationHours = actualMinutes === undefined ? elapsedMs / 3_600_000 : actualMinutes / 60;
         const isPartial = actualDurationHours < session.plannedDuration;
         const status = isPartial ? 'PARTIALLY_COMPLETED' : 'COMPLETED';
         const updatedSession = await db_1.prisma.$transaction(async (tx) => {

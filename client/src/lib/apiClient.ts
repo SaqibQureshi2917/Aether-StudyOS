@@ -129,3 +129,20 @@ export async function apiRequest<T>(
 
   return request;
 }
+
+export async function downloadApiFile(endpoint: string) {
+  const headers: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    const sessionToken = window.sessionStorage.getItem('studyos_token');
+    if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+  }
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'GET', headers, credentials: 'include' });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data?.error?.message || 'The file could not be downloaded.');
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i);
+  const filename = filenameMatch?.[1] ? decodeURIComponent(filenameMatch[1].replace(/^"|"$/g, '')) : '';
+  return { blob: await response.blob(), filename };
+}

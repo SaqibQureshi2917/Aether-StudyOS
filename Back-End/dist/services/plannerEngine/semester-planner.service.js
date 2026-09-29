@@ -8,6 +8,7 @@ const error_middleware_1 = require("../../middleware/error.middleware");
 const priority_engine_1 = require("./priority.engine");
 const scheduling_engine_1 = require("./scheduling.engine");
 const timezone_util_1 = require("./timezone.util");
+const estimation_engine_1 = require("./estimation.engine");
 const DAY_MS = 86_400_000;
 function parseClock(value) {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value))
@@ -21,6 +22,13 @@ function addMonthsUtc(date, months) {
     const normalizedMonth = ((targetMonth % 12) + 12) % 12;
     const lastDayOfMonth = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
     return new Date(Date.UTC(targetYear, normalizedMonth, Math.min(date.getUTCDate(), lastDayOfMonth)));
+}
+function examStudyTaskId(examId) {
+    const hex = (0, crypto_1.createHash)('sha256').update(`studyos-exam-task:${examId}`).digest('hex').slice(0, 32).split('');
+    hex[12] = '5';
+    hex[16] = ['8', '9', 'a', 'b'][parseInt(hex[16], 16) % 4];
+    const value = hex.join('');
+    return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 function dateKey(date) { return date.toISOString().slice(0, 10); }
 function deadlineForTimezone(date, timeZone) {
@@ -50,12 +58,16 @@ class SemesterPlannerService {
             where: { id: semesterId, userId },
             include: {
                 courses: {
+                    where: { status: { not: 'ARCHIVED' } },
                     select: {
                         id: true, name: true, difficulty: true, priority: true,
                         topicMasteries: { where: { masteryPercentage: { lt: 60 } }, select: { topicName: true, masteryPercentage: true } },
+                        exams: { include: { studyTasks: { select: { id: true, status: true } } } },
                         studyTasks: {
-                            where: { status: { in: ['PENDING', 'IN_PROGRESS'] } },
-                            include: { assignment: { select: { title: true, deadline: true, difficulty: true, priority: true } } },
+                            include: {
+                                assignment: { select: { title: true, deadline: true, difficulty: true, priority: true } },
+                                exam: { select: { id: true, title: true, date: true, estimatedEffort: true, importance: true } },
+                            },
                         },
                     },
                 },
@@ -100,7 +112,36 @@ class SemesterPlannerService {
             }
             currentDay.setUTCDate(currentDay.getUTCDate() + 1);
         }
-        const rawTasks = semester.courses.flatMap((course) => course.studyTasks.map((task) => ({ task, course })));
+        const rawTasks = semester.courses.flatMap((course) => [
+            ...course.studyTasks
+                .filter((task) => ['PENDING', 'IN_PROGRESS'].includes(task.status) && Math.max(0, task.estimatedHours - task.adjustedHours) > 0)
+                .map((task) => ({
+                task,
+                course,
+                isVirtualExam: false,
+                examTitle: task.exam?.title ?? null,
+                priorityOverride: task.exam?.importance,
+                sourceDeadline: task.exam?.date ?? task.deadline,
+            })),
+            ...course.exams
+                .filter((exam) => exam.studyTasks.length === 0)
+                .map((exam) => ({
+                task: {
+                    id: examStudyTaskId(exam.id),
+                    title: `Prepare for ${exam.title}`,
+                    estimatedHours: Math.max(0, exam.estimatedEffort),
+                    adjustedHours: 0,
+                    deadline: exam.date,
+                    assignment: null,
+                    exam: { id: exam.id, title: exam.title, date: exam.date, estimatedEffort: exam.estimatedEffort, importance: exam.importance },
+                },
+                course,
+                isVirtualExam: true,
+                examTitle: exam.title,
+                priorityOverride: exam.importance,
+                sourceDeadline: exam.date,
+            })),
+        ]);
         const rawTaskIds = rawTasks.map(({ task }) => task.id);
         const history = rawTaskIds.length ? await db_1.prisma.performanceRecord.findMany({
             where: { userId, taskId: { in: rawTaskIds } },
@@ -115,25 +156,22 @@ class SemesterPlannerService {
                 ratios.push(Math.min(1.5, Math.max(0.5, record.ratio)));
             ratiosByTask.set(record.taskId, ratios);
         }
-        const taskRows = rawTasks.map(({ task, course }) => {
-            const baselineRemainingHours = Math.max(0, task.estimatedHours - task.adjustedHours);
+        const taskRows = rawTasks.map(({ task, course, isVirtualExam, examTitle, priorityOverride, sourceDeadline }) => {
             const ratios = ratiosByTask.get(task.id) ?? [];
-            const historicalMultiplier = ratios.length
-                ? Math.min(1.25, Math.max(0.8, ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length))
-                : 1;
-            const remainingHours = baselineRemainingHours * historicalMultiplier;
-            const deadline = deadlineForTimezone(task.deadline, timeZone);
+            const estimate = estimation_engine_1.EstimationEngine.estimateRemaining(task.estimatedHours, task.adjustedHours, ratios);
+            const { baselineRemainingHours, adjustmentMultiplier: historicalMultiplier, remainingHours } = estimate;
+            const deadline = deadlineForTimezone(sourceDeadline, timeZone);
             const weakestMastery = course.topicMasteries.length ? Math.min(...course.topicMasteries.map((topic) => topic.masteryPercentage)) : null;
             const academicRisk = weakestMastery === null ? 0 : Math.max(0, ((60 - weakestMastery) / 60) * 100);
             const priorityBreakdown = priority_engine_1.PriorityEngine.explain({
                 deadline,
                 estimatedHours: remainingHours,
                 difficulty: task.assignment?.difficulty ?? course.difficulty,
-                userPriority: task.assignment?.priority ?? course.priority,
+                userPriority: task.assignment?.priority ?? priorityOverride ?? course.priority,
                 isOverdue: deadline < now,
                 academicRisk,
             }, now);
-            return { task, course, baselineRemainingHours, remainingHours, historicalMultiplier, deadline, priorityScore: priorityBreakdown.score, priorityBreakdown, weakestMastery };
+            return { task, course, isVirtualExam, examTitle, priorityOverride, baselineRemainingHours, remainingHours, historicalMultiplier, deadline, priorityScore: priorityBreakdown.score, priorityBreakdown, weakestMastery };
         }).filter(({ remainingHours }) => remainingHours > 0);
         const tasks = taskRows.map(({ task, remainingHours, deadline, priorityScore }) => ({
             id: task.id,
@@ -172,12 +210,15 @@ class SemesterPlannerService {
         return {
             semester,
             allSemesterTaskIds: allSemesterTasks.map((task) => task.id),
-            tasks: taskRows.map(({ task, course, baselineRemainingHours, remainingHours, historicalMultiplier, priorityScore, priorityBreakdown, weakestMastery, deadline }) => ({
+            tasks: taskRows.map(({ task, course, isVirtualExam, examTitle, baselineRemainingHours, remainingHours, historicalMultiplier, priorityScore, priorityBreakdown, weakestMastery, deadline }) => ({
                 id: task.id,
                 title: task.title,
                 courseId: course.id,
+                examId: task.exam?.id ?? null,
                 courseName: course.name,
                 assignmentTitle: task.assignment?.title ?? null,
+                examTitle,
+                isVirtualExam,
                 deadline,
                 estimatedHours: task.estimatedHours,
                 completedHours: task.adjustedHours,
@@ -199,7 +240,7 @@ class SemesterPlannerService {
         const sessions = await db_1.prisma.studySession.findMany({
             where: {
                 userId,
-                task: { course: { semesterId } },
+                task: { course: { semesterId, status: { not: 'ARCHIVED' } } },
                 scheduledStart: { gte: from, lte: to },
             },
             include: { task: { include: { course: { select: { id: true, name: true, colorCode: true } }, assignment: { select: { id: true, title: true } } } } },
@@ -232,8 +273,24 @@ class SemesterPlannerService {
         const plan = await this.buildSchedule(userId, semesterId, appliedAt, true, timeZone);
         if (plan.previewHash !== expectedHash)
             throw new error_middleware_1.AppError('Your tasks or availability changed after this preview. Review a fresh preview before applying it.', 409);
-        const taskIds = plan.allSemesterTaskIds;
+        const virtualExamTasks = plan.tasks.filter((task) => task.isVirtualExam);
+        const taskIds = [...plan.allSemesterTaskIds, ...virtualExamTasks.map((task) => task.id)];
         const sessions = await db_1.prisma.$transaction(async (tx) => {
+            for (const examTask of virtualExamTasks) {
+                const alreadyLinked = await tx.studyTask.findFirst({ where: { examId: examTask.examId }, select: { id: true } });
+                if (!alreadyLinked) {
+                    await tx.studyTask.create({
+                        data: {
+                            id: examTask.id,
+                            courseId: examTask.courseId,
+                            examId: examTask.examId,
+                            title: examTask.title,
+                            estimatedHours: examTask.estimatedHours,
+                            deadline: examTask.deadline,
+                        },
+                    });
+                }
+            }
             if (taskIds.length) {
                 await tx.studySession.updateMany({
                     where: { userId, taskId: { in: taskIds }, status: 'SCHEDULED', isManualOverride: false, scheduledEnd: { gt: appliedAt } },

@@ -10,6 +10,9 @@ router.use(auth_middleware_1.authenticate);
 router.post('/upload', upload_middleware_1.upload.single('file'), material_controller_1.uploadMaterial);
 // GET /api/v1/materials
 router.get('/', material_controller_1.getUserMaterials);
+router.patch('/:id', material_controller_1.renameMaterial);
+router.delete('/:id', material_controller_1.deleteMaterial);
+router.post('/:id/confirm-assignment', material_controller_1.confirmMaterialAssignment);
 router.post('/:id/index', material_controller_1.indexUserMaterial);
 router.get('/:id/download', material_controller_1.downloadMaterial);
 exports.default = router;

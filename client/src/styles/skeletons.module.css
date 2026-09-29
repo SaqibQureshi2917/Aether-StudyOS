@@ -127,7 +127,13 @@
 .boxPlannerTitle {
   width: 250px;
   height: 32px;
+  margin-bottom: 8px;
 }
+
+.plannerSubtitleSkeleton { width: 350px; height: 16px; }
+.plannerActionSkeleton { width: 150px; height: 40px; border-radius: 8px; }
+.plannerSectionSkeleton { width: 180px; height: 20px; margin-bottom: 1.25rem; }
+.plannerPanelSkeleton { width: 100%; height: 120px; }
 
 .boxDayTitle {
   width: 80%;

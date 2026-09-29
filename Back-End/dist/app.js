@@ -20,6 +20,7 @@ const session_routes_1 = __importDefault(require("./routes/session.routes"));
 const recommendation_routes_1 = __importDefault(require("./routes/recommendation.routes"));
 const semester_routes_1 = __importDefault(require("./routes/semester.routes"));
 const app = (0, express_1.default)();
+app.set('trust proxy', 1);
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin && env_1.ENV.CORS_ORIGINS.includes(origin) && req.headers['access-control-request-private-network'] === 'true') {

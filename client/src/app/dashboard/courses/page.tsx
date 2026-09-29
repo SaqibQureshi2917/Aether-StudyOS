@@ -1,10 +1,17 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
+import styles from './courses.module.css';
 
 type Semester = { id: string; name: string; startDate: string; endDate: string | null; status: 'ACTIVE' | 'COMPLETED' | 'PLANNED'; _count?: { courses: number } };
-type Course = { id: string; name: string; code: string | null; creditHours: number; difficulty: number; priority: number; semesterId: string; semester?: { name: string } };
+type Course = { id: string; name: string; code: string | null; creditHours: number; difficulty: number; priority: number; semesterId: string; status: string; semester?: { name: string } };
+type ApiResponse<T> = { success: boolean; data: T };
+
+function errorText(error: unknown, fallback: string) {
+  return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : fallback;
+}
 
 export default function CoursesPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -18,32 +25,40 @@ export default function CoursesPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     setError('');
     try {
       const cachedSemesters = getCachedApiResponse<{ data?: { semesters?: Semester[] } }>('/semesters')?.data?.semesters;
-      const cachedCourses = getCachedApiResponse<{ data?: { courses?: Course[] } }>('/courses')?.data?.courses;
+      const coursesEndpoint = `/courses?includeArchived=${showArchived}`;
+      const cachedCourses = getCachedApiResponse<{ data?: { courses?: Course[] } }>(coursesEndpoint)?.data?.courses;
       if (cachedSemesters) setSemesters(cachedSemesters);
       if (cachedCourses) setCourses(cachedCourses);
-      const [semesterResponse, courseResponse]: any[] = await Promise.all([
-        apiRequest('/semesters', 'GET'), apiRequest('/courses', 'GET'),
+      const [semesterResponse, courseResponse] = await Promise.all([
+        apiRequest<ApiResponse<{ semesters: Semester[] }>>('/semesters', 'GET'),
+        apiRequest<ApiResponse<{ courses: Course[] }>>(coursesEndpoint, 'GET'),
       ]);
       const nextSemesters: Semester[] = semesterResponse.data?.semesters ?? [];
       setSemesters(nextSemesters);
       setCourses(courseResponse.data?.courses ?? []);
       setSemesterId((current) => current || nextSemesters.find((s) => s.status === 'ACTIVE')?.id || nextSemesters[0]?.id || '');
-    } catch (cause: any) {
-      setError(cause?.message || 'Could not load courses and semesters.');
+    } catch (cause: unknown) {
+      setError(errorText(cause, 'Could not load courses and semesters.'));
     }
-  }, []);
+  }, [showArchived]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // Load the authenticated academic records as an external synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   const submit = async (event: FormEvent, action: () => Promise<unknown>, success: string) => {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     try { await action(); setMessage(success); await load(); }
-    catch (cause: any) { setError(cause?.message || 'Could not save your changes.'); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not save your changes.')); }
     finally { setBusy(false); }
   };
 
@@ -58,15 +73,15 @@ export default function CoursesPage() {
   const updateStatus = async (semester: Semester, status: Semester['status']) => {
     setBusy(true); setError(''); setMessage('');
     try { await apiRequest(`/semesters/${semester.id}`, 'PUT', { status }); setMessage('Semester status updated.'); await load(); }
-    catch (cause: any) { setError(cause?.message || 'Could not update semester.'); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not update semester.')); }
     finally { setBusy(false); }
   };
 
   const removeSemester = async (semester: Semester) => {
-    if (!window.confirm(`Delete “${semester.name}” and all its courses, assignments, and study data? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete empty semester “${semester.name}”? Semesters with subjects cannot be deleted. This cannot be undone.`)) return;
     setBusy(true); setError(''); setMessage('');
     try { await apiRequest(`/semesters/${semester.id}`, 'DELETE'); setMessage('Semester deleted.'); await load(); }
-    catch (cause: any) { setError(cause?.message || 'Could not delete semester.'); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not delete semester.')); }
     finally { setBusy(false); }
   };
 
@@ -74,7 +89,7 @@ export default function CoursesPage() {
     if (!window.confirm(`Delete “${course.name}” and its linked assignments and study data? This cannot be undone.`)) return;
     setBusy(true); setError(''); setMessage('');
     try { await apiRequest(`/courses/${course.id}`, 'DELETE'); setMessage('Course deleted.'); await load(); }
-    catch (cause: any) { setError(cause?.message || 'Could not delete course.'); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not delete course.')); }
     finally { setBusy(false); }
   };
 
@@ -83,21 +98,33 @@ export default function CoursesPage() {
     if (!name || name === course.name) return;
     setBusy(true); setError(''); setMessage('');
     try { await apiRequest(`/courses/${course.id}`, 'PUT', { name }); setMessage('Course updated.'); await load(); }
-    catch (cause: any) { setError(cause?.message || 'Could not update course.'); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not update course.')); }
     finally { setBusy(false); }
   };
 
-  return <main style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
-    <h1>Courses & Semesters</h1>
-    <p>Manage your academic terms and the courses attached to them.</p>
-    {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
-    {message && <p role="status">{message}</p>}
+  const archiveCourse = async (course: Course) => {
+    const status = course.status === 'ARCHIVED' ? 'ACTIVE' : 'ARCHIVED';
+    const action = status === 'ARCHIVED' ? 'Archive' : 'Restore';
+    if (!window.confirm(`${action} “${course.name}”? Its academic records and materials will be preserved.`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try { await apiRequest(`/courses/${course.id}`, 'PUT', { status }); setMessage(status === 'ARCHIVED' ? 'Subject archived; records preserved.' : 'Subject restored.'); await load(); }
+    catch (cause: unknown) { setError(errorText(cause, 'Could not update subject status.')); }
+    finally { setBusy(false); }
+  };
 
-    <section aria-labelledby="semester-heading" style={{ marginTop: 32 }}>
+  const visibleCourses = courses.filter((course) => `${course.name} ${course.code || ''} ${course.semester?.name || ''}`.toLowerCase().includes(search.toLowerCase()));
+
+  return <main className={styles.page}>
+    <h1>Subjects & Semesters</h1>
+    <p className={styles.intro}>Manage academic terms and subject workspaces. Archiving preserves materials and study history.</p>
+    {error && <p className={styles.error} role="alert">{error}</p>}
+    {message && <p className={styles.notice} role="status">{message}</p>}
+
+    <section className={styles.section} aria-labelledby="semester-heading">
       <h2 id="semester-heading">Semesters</h2>
       {semesters.length === 0 && <p>No semesters yet. Create one to add courses.</p>}
-      <ul style={{ padding: 0, listStyle: 'none' }}>
-        {semesters.map((semester) => <li key={semester.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #ddd' }}>
+      <ul className={styles.list}>
+        {semesters.map((semester) => <li key={semester.id} className={styles.row}>
           <strong>{semester.name}</strong><span>{new Date(semester.startDate).toLocaleDateString()} – {semester.endDate ? new Date(semester.endDate).toLocaleDateString() : 'Estimated end: 6 months after start'}</span>
           <span>{semester.status} · {semester._count?.courses ?? courses.filter((c) => c.semesterId === semester.id).length} courses</span>
           {semester.status !== 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void updateStatus(semester, 'ACTIVE')}>Make active</button>}
@@ -105,7 +132,7 @@ export default function CoursesPage() {
           <button type="button" disabled={busy} onClick={() => void removeSemester(semester)}>Delete</button>
         </li>)}
       </ul>
-      <form onSubmit={createSemester} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+      <form onSubmit={createSemester} className={styles.form}>
         <input aria-label="Semester name" placeholder="Enter semester name" required maxLength={100} value={semesterName} onChange={(e) => setSemesterName(e.target.value)} />
         <label>Starts <input aria-label="Semester start date" type="date" required value={semesterStart} onChange={(e) => setSemesterStart(e.target.value)} /></label>
         <label>Ends (optional) <input aria-label="Semester end date (optional)" type="date" value={semesterEnd} onChange={(e) => setSemesterEnd(e.target.value)} /></label>
@@ -113,9 +140,13 @@ export default function CoursesPage() {
       </form>
     </section>
 
-    <section aria-labelledby="courses-heading" style={{ marginTop: 40 }}>
+    <section className={styles.section} aria-labelledby="courses-heading">
       <h2 id="courses-heading">Subjects</h2>
-      <form onSubmit={createCourse} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '16px 0' }}>
+      <div className={styles.toolbar}>
+        <input aria-label="Search subjects" placeholder="Search subjects or semester" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <label><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Include archived</label>
+      </div>
+      <form onSubmit={createCourse} className={styles.form}>
         <select aria-label="Subject semester" required value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
           <option value="">Select semester</option>{semesters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -123,11 +154,13 @@ export default function CoursesPage() {
         <input aria-label="Course code" placeholder="Enter course code (optional)" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
         <button disabled={busy || !semesterId || !courseName}>Add subject</button>
       </form>
-      {courses.length === 0 ? <p>No courses yet.</p> : <ul style={{ padding: 0, listStyle: 'none' }}>
-        {courses.map((course) => <li key={course.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ddd' }}>
-          <strong>{course.name}</strong><span>{course.code || 'No course code'}</span><span>{course.semester?.name}</span>
+      {visibleCourses.length === 0 ? <p>{courses.length ? 'No subjects match your search.' : 'No subjects yet.'}</p> : <ul className={styles.list}>
+        {visibleCourses.map((course) => <li key={course.id} className={styles.row}>
+          <strong>{course.name}</strong><span>{course.code || 'No subject code'}</span><span>{course.semester?.name}</span><span>{course.status === 'ARCHIVED' ? 'Archived' : 'Active'}</span>
+          <Link href={`/dashboard/courses/${course.id}`}>Open workspace</Link>
           <button type="button" disabled={busy} onClick={() => void renameCourse(course)}>Rename</button>
-          <button type="button" disabled={busy} onClick={() => void removeCourse(course)}>Delete</button>
+          <button type="button" disabled={busy} onClick={() => void archiveCourse(course)}>{course.status === 'ARCHIVED' ? 'Restore' : 'Archive'}</button>
+          <button type="button" disabled={busy} onClick={() => void removeCourse(course)}>Delete if empty</button>
         </li>)}
       </ul>}
     </section>

@@ -120,10 +120,14 @@ function ChatWorkspace() {
 
   useEffect(() => {
     const threadId = searchParams.get('threadId');
+    const subjectId = searchParams.get('courseId');
     // Route changes trigger an authenticated history load and update the chat view.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (threadId) void loadConversation(threadId);
-    else resetConversation();
+    else {
+      resetConversation();
+      if (subjectId) { setCourseId(subjectId); setMode('STUDY'); }
+    }
   }, [searchParams, loadConversation, resetConversation]);
 
   const loadStudySources = useCallback(async () => {

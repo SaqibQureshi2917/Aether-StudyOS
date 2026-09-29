@@ -60,6 +60,7 @@ export class SemesterPlannerService {
       where: { id: semesterId, userId },
       include: {
         courses: {
+          where: { status: { not: 'ARCHIVED' } },
           select: {
             id: true, name: true, difficulty: true, priority: true,
             topicMasteries: { where: { masteryPercentage: { lt: 60 } }, select: { topicName: true, masteryPercentage: true } },
@@ -242,7 +243,7 @@ export class SemesterPlannerService {
     const sessions = await prisma.studySession.findMany({
       where: {
         userId,
-        task: { course: { semesterId } },
+        task: { course: { semesterId, status: { not: 'ARCHIVED' } } },
         scheduledStart: { gte: from, lte: to },
       },
       include: { task: { include: { course: { select: { id: true, name: true, colorCode: true } }, assignment: { select: { id: true, title: true } } } } },

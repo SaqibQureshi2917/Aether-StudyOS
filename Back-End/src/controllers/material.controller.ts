@@ -8,6 +8,8 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { DocumentExtractionService } from '../services/document/extraction.service';
 import { DocumentIndexingService } from '../services/document/indexing.service';
 import { AIProviderError } from '../services/ai/ai-provider.interface';
+import { FileStorageService } from '../services/document/file-storage.service';
+import { z } from 'zod';
 
 // CJS require for pdf-parse to fix TypeScript callable signature error
 const pdfParse = require('pdf-parse');
@@ -47,7 +49,7 @@ const extractOfficeXmlText = (buffer: Buffer, filePattern: RegExp) => {
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
     const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
     const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize);
-    const xml = method === 0 ? compressed.toString('utf8') : method === 8 ? inflateRawSync(compressed).toString('utf8') : '';
+    const xml = method === 0 ? compressed.toString('utf8') : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 20 * 1024 * 1024 }).toString('utf8') : '';
     if (xml) {
       totalUncompressedBytes += uncompressedSize;
       xmlDocuments.push(xml);
@@ -69,22 +71,20 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
     const { courseId, title } = req.body;
     const userId = req.user?.userId;
 
-    if (!file) {
-      throw new AppError('Please attach a PDF or syllabus document file.', 400);
-    }
+    if (!file) throw new AppError('Please attach a supported academic document.', 400);
     if (!courseId) {
       throw new AppError('Course ID is required for material upload.', 400);
     }
     if (!userId) throw new AppError('Unauthorized access', 401);
 
     const extension = path.extname(file.originalname).toLowerCase();
-    const signature = fs.readFileSync(file.path).subarray(0, 4);
+    const signature = file.buffer.subarray(0, 4);
     const isPdf = extension === '.pdf' && signature.subarray(0, 4).toString('ascii') === '%PDF';
     const isOfficeDocument = (extension === '.docx' || extension === '.pptx')
       && signature[0] === 0x50 && signature[1] === 0x4b;
-    if (!isPdf && !isOfficeDocument) {
-      fs.unlinkSync(file.path);
-      throw new AppError('This file does not match a supported PDF, DOCX, or PPTX document.', 400);
+    const isText = extension === '.txt' && file.buffer.length > 0;
+    if (!isPdf && !isOfficeDocument && !isText) {
+      throw new AppError('This file does not match a supported PDF, DOCX, PPTX, or TXT document.', 400);
     }
 
     const course = await prisma.course.findFirst({
@@ -96,28 +96,41 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
     let extractedText = '';
 
     const lowerFileName = file.originalname.toLowerCase();
-    if (file.mimetype === 'application/pdf' || lowerFileName.endsWith('.pdf')) {
-      const dataBuffer = fs.readFileSync(file.path);
-      const pdfData = await pdfParse(dataBuffer);
+    if (extension === '.pdf') {
+      const pdfData = await pdfParse(file.buffer);
       extractedText = pdfData.text;
     } else if (lowerFileName.endsWith('.docx')) {
-      extractedText = extractOfficeXmlText(fs.readFileSync(file.path), /^word\/document\.xml$/i);
+      extractedText = extractOfficeXmlText(file.buffer, /^word\/document\.xml$/i);
     } else if (lowerFileName.endsWith('.pptx')) {
-      extractedText = extractOfficeXmlText(fs.readFileSync(file.path), /^ppt\/slides\/slide\d+\.xml$/i);
+      extractedText = extractOfficeXmlText(file.buffer, /^ppt\/slides\/slide\d+\.xml$/i);
+    } else if (extension === '.txt') {
+      extractedText = file.buffer.toString('utf8').replace(/\0/g, '');
     }
 
     const materialTitle = typeof title === 'string' && title.trim()
       ? title.trim().slice(0, 200)
       : file.originalname.replace(/\.[^/.]+$/, '').slice(0, 200);
 
-    // Keep extracted text available for processing, but don't label it indexed until embeddings exist.
-    const newMaterial = await prisma.courseMaterial.create({
+    const contentTypeByExtension: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.txt': 'text/plain; charset=utf-8',
+    };
+    const storedContentType = contentTypeByExtension[extension];
+    const storageKey = await FileStorageService.store(userId, courseId, file.originalname, storedContentType, file.buffer);
+    let newMaterial;
+    try {
+    // Persist metadata and extracted text; binary content stays in the configured file store.
+    newMaterial = await prisma.courseMaterial.create({
       data: {
         title: materialTitle,
-        fileUrl: file.path,
-        fileType: file.mimetype,
+        storageKey,
+        fileType: storedContentType,
+        fileSizeBytes: file.size,
         extractedText: extractedText || null,
         isIndexed: false,
+        processingStatus: extractedText.trim() ? 'PROCESSING' : 'FAILED',
         courseId,
       },
       select: {
@@ -141,36 +154,16 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
     }
 
     let extractedAssignment: Awaited<ReturnType<typeof DocumentExtractionService.extractAssignmentFromText>> = null;
-    let createdAssignment: { id: string; title: string } | null = null;
     if (extractedText) {
       extractedAssignment = await DocumentExtractionService.extractAssignmentFromText(newMaterial.id, extractedText);
       if (extractedAssignment) {
         await prisma.courseMaterial.update({
           where: { id: newMaterial.id },
-          data: { metadata: { extractedAssignment } },
+          data: { metadata: { assignmentDraft: extractedAssignment } },
         });
-        if (extractedAssignment.deadline) {
-          const deadline = new Date(extractedAssignment.deadline);
-          const duplicate = await prisma.assignment.findFirst({
-            where: { courseId, title: extractedAssignment.title, deadline },
-            select: { id: true, title: true },
-          });
-          const assignment = duplicate ?? await prisma.assignment.create({
-            data: {
-              courseId,
-              title: extractedAssignment.title.slice(0, 200),
-              description: extractedAssignment.description ?? null,
-              deadline,
-              difficulty: extractedAssignment.difficulty,
-              estimatedHours: extractedAssignment.estimatedHours,
-              estimateSource: 'AI_ASSISTANT',
-            },
-            select: { id: true, title: true },
-          });
-          createdAssignment = assignment;
-        }
       }
     }
+    await prisma.courseMaterial.update({ where: { id: newMaterial.id }, data: { processingStatus: isIndexed ? 'INDEXED' : 'FAILED' } });
 
     res.status(201).json({
       success: true,
@@ -179,19 +172,15 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
         material: { ...newMaterial, isIndexed },
         extractedTextLength: extractedText.length,
         extractedAssignment,
-        assignment: createdAssignment,
+        assignmentDraft: extractedAssignment,
         indexingMessage,
       },
     });
-  } catch (error) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      try {
-        const referencedMaterial = await prisma.courseMaterial.findFirst({ where: { fileUrl: req.file.path }, select: { id: true } });
-        if (!referencedMaterial) fs.unlinkSync(req.file.path);
-      } catch {
-        // Keep the original request error while leaving cleanup retryable by an operator.
-      }
+    } catch (error) {
+      if (!newMaterial) await FileStorageService.remove(storageKey).catch(() => undefined);
+      throw error;
     }
+  } catch (error) {
     next(error);
   }
 };
@@ -201,16 +190,24 @@ export const getUserMaterials = async (req: AuthenticatedRequest, res: Response,
     const userId = req.user?.userId;
     if (!userId) throw new AppError('Unauthorized access', 401);
     // Selects only valid fields defined in schema.prisma
+    const courseId = typeof req.query.courseId === 'string' ? req.query.courseId : undefined;
+    if (courseId) {
+      const ownedCourse = await prisma.course.findFirst({ where: { id: courseId, semester: { userId } }, select: { id: true } });
+      if (!ownedCourse) throw new AppError('Subject not found.', 404);
+    }
     const materials = await prisma.courseMaterial.findMany({
       select: {
         id: true,
         title: true,
         fileType: true,
+        fileSizeBytes: true,
         isIndexed: true,
+        processingStatus: true,
         createdAt: true,
         courseId: true,
+        metadata: true,
       },
-      where: { course: { semester: { userId } } },
+      where: { course: { semester: { userId }, ...(courseId ? { id: courseId } : {}) } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -255,18 +252,113 @@ export const downloadMaterial = async (req: AuthenticatedRequest, res: Response,
     if (!userId) throw new AppError('Unauthorized access', 401);
     const material = await prisma.courseMaterial.findFirst({
       where: { id: req.params.id, course: { semester: { userId } } },
-      select: { fileUrl: true, title: true, fileType: true },
+      select: { fileUrl: true, storageKey: true, title: true, fileType: true },
     });
     if (!material) throw new AppError('Material not found.', 404);
+    if (material.storageKey) {
+      const contents = await FileStorageService.read(material.storageKey);
+      const extension = path.extname(material.storageKey) || '.bin';
+      res.type(material.fileType || 'application/octet-stream').attachment(`${material.title}${extension}`).send(contents);
+      return;
+    }
+    if (!material.fileUrl) throw new AppError('Material file is unavailable.', 404);
     const uploadRoot = path.resolve(process.cwd(), 'uploads');
     const filePath = path.resolve(material.fileUrl);
-    if (!filePath.startsWith(`${uploadRoot}${path.sep}`) || !fs.existsSync(filePath)) {
-      throw new AppError('Material file is unavailable.', 404);
-    }
+    if (!filePath.startsWith(`${uploadRoot}${path.sep}`) || !fs.existsSync(filePath)) throw new AppError('Material file is unavailable.', 404);
     res.download(filePath, path.basename(filePath), (error) => {
       if (error && !res.headersSent) next(error);
     });
   } catch (error) {
     next(error);
   }
+};
+
+const renameMaterialSchema = z.object({ title: z.string().trim().min(1).max(200) });
+const confirmAssignmentSchema = z.object({
+  deadline: z.string().datetime(),
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().max(10_000).nullable().optional(),
+  estimatedHours: z.number().finite().positive().max(1000).optional(),
+  difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
+});
+
+export const renameMaterial = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    const parsed = renameMaterialSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'Enter a valid document title.', 400);
+    const material = await prisma.courseMaterial.findFirst({ where: { id: req.params.id, course: { semester: { userId } } }, select: { id: true, extractedText: true } });
+    if (!material) throw new AppError('Material not found.', 404);
+    const renamed = await prisma.courseMaterial.update({ where: { id: material.id }, data: { title: parsed.data.title, isIndexed: false, processingStatus: 'UPLOADED' }, select: { id: true, title: true, courseId: true, processingStatus: true } });
+    await prisma.documentChunk.deleteMany({ where: { materialId: material.id } });
+    let indexed = false;
+    if (material.extractedText?.trim()) {
+      try { indexed = (await DocumentIndexingService.indexMaterial(material.id, parsed.data.title, material.extractedText)) > 0; }
+      catch { await prisma.courseMaterial.update({ where: { id: material.id }, data: { processingStatus: 'FAILED', isIndexed: false } }); }
+    }
+    return res.status(200).json({ success: true, data: { material: { ...renamed, isIndexed: indexed, processingStatus: indexed ? 'INDEXED' : material.extractedText ? 'FAILED' : 'UPLOADED' } } });
+  } catch (error) { return next(error); }
+};
+
+export const deleteMaterial = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    const material = await prisma.courseMaterial.findFirst({ where: { id: req.params.id, course: { semester: { userId } } }, select: { id: true, storageKey: true, fileUrl: true } });
+    if (!material) throw new AppError('Material not found.', 404);
+    await prisma.$transaction(async (tx) => {
+      await tx.citation.deleteMany({ where: { documentId: material.id } });
+      await tx.courseMaterial.delete({ where: { id: material.id } });
+    });
+    let cleanupPending = false;
+    if (material.storageKey) {
+      try { await FileStorageService.remove(material.storageKey); }
+      catch { cleanupPending = true; }
+    } else if (material.fileUrl) {
+      const uploadRoot = path.resolve(process.cwd(), 'uploads');
+      const oldPath = path.resolve(material.fileUrl);
+      if (oldPath.startsWith(`${uploadRoot}${path.sep}`) && fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch { cleanupPending = true; }
+      }
+    }
+    return res.status(200).json({ success: true, data: { deleted: true, cleanupPending } });
+  } catch (error) { return next(error); }
+};
+
+export const confirmMaterialAssignment = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    const parsed = confirmAssignmentSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'Review the assignment details.', 400);
+    const material = await prisma.courseMaterial.findFirst({ where: { id: req.params.id, course: { semester: { userId } } }, select: { id: true, courseId: true, metadata: true } });
+    if (!material) throw new AppError('Material not found.', 404);
+    const metadata = material.metadata && typeof material.metadata === 'object' && !Array.isArray(material.metadata) ? material.metadata as Record<string, unknown> : {};
+    const draft = metadata.assignmentDraft as Record<string, unknown> | undefined;
+    if (!draft || metadata.confirmedAssignmentId) throw new AppError('There is no unconfirmed assignment draft for this material.', 409);
+    const deadline = new Date(parsed.data.deadline);
+    if (!Number.isFinite(deadline.getTime()) || deadline <= new Date()) throw new AppError('Choose a future deadline before confirming this assignment.', 400);
+    const assignment = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "CourseMaterial" WHERE "id" = ${material.id} FOR UPDATE`;
+      const fresh = await tx.courseMaterial.findUnique({ where: { id: material.id }, select: { metadata: true, courseId: true } });
+      const currentMetadata = fresh?.metadata && typeof fresh.metadata === 'object' && !Array.isArray(fresh.metadata) ? fresh.metadata as Record<string, unknown> : {};
+      const currentDraft = currentMetadata.assignmentDraft as Record<string, unknown> | undefined;
+      if (!fresh || !currentDraft || currentMetadata.confirmedAssignmentId) throw new AppError('This assignment draft has already been confirmed.', 409);
+      const created = await tx.assignment.create({
+        data: {
+          courseId: fresh.courseId,
+          title: (parsed.data.title || String(currentDraft.title || '')).trim().slice(0, 200),
+          description: parsed.data.description === undefined ? (typeof currentDraft.description === 'string' ? currentDraft.description : null) : parsed.data.description,
+          deadline,
+          difficulty: parsed.data.difficulty || (['EASY', 'MEDIUM', 'HARD'].includes(String(currentDraft.difficulty)) ? currentDraft.difficulty as 'EASY' | 'MEDIUM' | 'HARD' : 'MEDIUM'),
+          estimatedHours: parsed.data.estimatedHours || (typeof currentDraft.estimatedHours === 'number' ? Math.min(1000, Math.max(0.1, currentDraft.estimatedHours)) : 2),
+          estimateSource: 'AI_ASSISTANT',
+        },
+      });
+      await tx.courseMaterial.update({ where: { id: material.id }, data: { metadata: { ...currentMetadata, assignmentDraft: null, confirmedAssignmentId: created.id } as any } });
+      return created;
+    });
+    return res.status(201).json({ success: true, data: { assignment } });
+  } catch (error) { return next(error); }
 };

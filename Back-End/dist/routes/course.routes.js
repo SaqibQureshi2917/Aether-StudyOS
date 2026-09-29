@@ -7,6 +7,7 @@ const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticate); // Protected routes
 router.post('/', course_controller_1.createCourse);
 router.get('/', course_controller_1.getCourses);
+router.get('/:id', course_controller_1.getCourseById);
 router.put('/:id', course_controller_1.updateCourse);
 router.delete('/:id', course_controller_1.deleteCourse);
 exports.default = router;

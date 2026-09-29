@@ -61,10 +61,17 @@ export const getCourses = async (req: AuthenticatedRequest, res: Response, next:
 
     if (!userId) throw new AppError('Unauthorized access', 401);
 
-    const whereClause: any = {
-      semester: { userId }
-    };
+    const whereClause: any = { semester: { userId } };
     if (semesterId) whereClause.semesterId = semesterId as string;
+    if (req.query.includeArchived !== 'true') whereClause.status = { not: 'ARCHIVED' };
+    if (typeof req.query.q === 'string' && req.query.q.trim()) {
+      const search = req.query.q.trim().slice(0, 100);
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+        { instructor: { contains: search, mode: 'insensitive' } },
+      ];
+    }
 
     const courses = await prisma.course.findMany({
       where: whereClause,
@@ -99,7 +106,7 @@ export const getCourseById = async (req: AuthenticatedRequest, res: Response, ne
         semester: true,
         assignments: true,
         exams: true,
-        studyTasks: true,
+        studyTasks: { include: { sessions: { where: { scheduledEnd: { gte: new Date(Date.now() - 7 * 86_400_000) } }, orderBy: { scheduledStart: 'asc' } } } },
       },
     });
 
@@ -123,15 +130,20 @@ export const updateCourse = async (req: AuthenticatedRequest, res: Response, nex
     if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 120)) {
       throw new AppError('Course name must be between 1 and 120 characters.', 400);
     }
+    if (status !== undefined && !['ACTIVE', 'ARCHIVED'].includes(status)) throw new AppError('Subject status must be ACTIVE or ARCHIVED.', 400);
+    if (code !== undefined && (typeof code !== 'string' || code.length > 40)) throw new AppError('Subject code must be 40 characters or fewer.', 400);
+    if (instructor !== undefined && (typeof instructor !== 'string' || instructor.length > 120)) throw new AppError('Instructor name must be 120 characters or fewer.', 400);
+    if (description !== undefined && (typeof description !== 'string' || description.length > 5000)) throw new AppError('Subject description must be 5,000 characters or fewer.', 400);
 
     const course = await prisma.course.findFirst({
       where: { id, semester: { userId } }
     });
     if (!course) throw new AppError('Course not found', 404);
 
-    const updated = await prisma.course.update({
-      where: { id },
-      data: {
+    const updated = await prisma.$transaction(async (tx) => {
+      const changedCourse = await tx.course.update({
+        where: { id },
+        data: {
         ...(name !== undefined && { name: name.trim() }),
         ...(code !== undefined && { code }),
         ...(creditHours !== undefined && { creditHours: parseScaleValue(creditHours, 'Credit hours', 1, 10, 3) }),
@@ -141,7 +153,15 @@ export const updateCourse = async (req: AuthenticatedRequest, res: Response, nex
         ...(instructor !== undefined && { instructor }),
         ...(description !== undefined && { description }),
         ...(colorCode && { colorCode }),
-      },
+        },
+      });
+      if (status === 'ARCHIVED') {
+        await tx.studySession.updateMany({
+          where: { userId, status: 'SCHEDULED', scheduledEnd: { gt: new Date() }, task: { courseId: id } },
+          data: { status: 'CANCELLED' },
+        });
+      }
+      return changedCourse;
     });
 
     res.status(200).json({
@@ -164,6 +184,12 @@ export const deleteCourse = async (req: AuthenticatedRequest, res: Response, nex
       where: { id, semester: { userId } }
     });
     if (!course) throw new AppError('Course not found', 404);
+
+    const [materials, assignments, exams, tasks] = await Promise.all([
+      prisma.courseMaterial.count({ where: { courseId: id } }), prisma.assignment.count({ where: { courseId: id } }),
+      prisma.exam.count({ where: { courseId: id } }), prisma.studyTask.count({ where: { courseId: id } }),
+    ]);
+    if (materials + assignments + exams + tasks > 0) throw new AppError('This subject has academic records. Archive it to preserve its materials, assignments, and study history.', 409);
 
     await prisma.course.delete({ where: { id } });
 

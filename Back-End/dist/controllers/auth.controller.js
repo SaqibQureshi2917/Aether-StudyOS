@@ -1,12 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logout = exports.getMe = exports.login = exports.register = void 0;
+exports.logout = exports.getMe = exports.resetPassword = exports.requestPasswordReset = exports.login = exports.register = void 0;
 const db_1 = require("../config/db");
 const error_middleware_1 = require("../middleware/error.middleware");
 const password_util_1 = require("../utils/password.util");
 const jwt_util_1 = require("../utils/jwt.util");
 const env_1 = require("../config/env");
-const normalizeEmail = (email) => email.trim().toLowerCase();
+const crypto_1 = require("crypto");
+const auth_security_service_1 = require("../services/auth-security.service");
+const email_service_1 = require("../services/email.service");
+const normalizeEmail = auth_security_service_1.normalizeLoginEmail;
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isTrustedCrossSiteRequest = (req) => {
     const origin = req.headers.origin;
@@ -114,12 +117,21 @@ const login = async (req, res, next) => {
         if (!isValidEmail(normalizedEmail) || password.length > 128) {
             throw new error_middleware_1.AppError('Invalid email or password.', 401);
         }
+        if (!(await (0, auth_security_service_1.assertLoginAllowed)(normalizedEmail, req))) {
+            res.setHeader('Retry-After', '900');
+            throw new error_middleware_1.AppError('Too many sign-in attempts. Please wait 15 minutes and try again.', 429);
+        }
         const user = await db_1.prisma.user.findUnique({ where: { email: normalizedEmail } });
-        if (!user)
+        if (!user) {
+            await (0, auth_security_service_1.recordFailedLogin)(normalizedEmail, req);
             throw new error_middleware_1.AppError('Invalid email or password.', 401);
+        }
         const isPasswordValid = await (0, password_util_1.comparePassword)(password, user.password);
-        if (!isPasswordValid)
+        if (!isPasswordValid) {
+            await (0, auth_security_service_1.recordFailedLogin)(normalizedEmail, req);
             throw new error_middleware_1.AppError('Invalid email or password.', 401);
+        }
+        await (0, auth_security_service_1.clearFailedLogins)(normalizedEmail);
         const authSession = await db_1.prisma.authSession.create({
             data: { userId: user.id, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
         });
@@ -146,6 +158,77 @@ const login = async (req, res, next) => {
     }
 };
 exports.login = login;
+const requestPasswordReset = async (req, res, next) => {
+    try {
+        const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
+        const throttleKey = isValidEmail(email) ? email : 'invalid-reset-address';
+        if (!(await (0, auth_security_service_1.assertLoginAllowed)(throttleKey, req))) {
+            res.setHeader('Retry-After', '900');
+            return res.status(429).json({ success: false, error: { message: 'Too many requests. Please wait 15 minutes and try again.' } });
+        }
+        await (0, auth_security_service_1.recordFailedLogin)(throttleKey, req);
+        if (!isValidEmail(email) || email.length > 254) {
+            return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+        }
+        if (!env_1.ENV.RESEND_API_KEY || !env_1.ENV.RESET_EMAIL_FROM) {
+            throw new error_middleware_1.AppError('Password reset email is not configured yet.', 503);
+        }
+        const user = await db_1.prisma.user.findUnique({ where: { email }, select: { id: true, email: true, fullName: true } });
+        if (user) {
+            const rawToken = (0, crypto_1.randomBytes)(32).toString('base64url');
+            const tokenHash = (0, crypto_1.createHash)('sha256').update(rawToken).digest('hex');
+            const expiresAt = new Date(Date.now() + 30 * 60_000);
+            await db_1.prisma.$transaction(async (tx) => {
+                await tx.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+                await tx.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+            });
+            const resetUrl = new URL('/forgot-password', env_1.ENV.APP_BASE_URL);
+            resetUrl.searchParams.set('token', rawToken);
+            try {
+                await (0, email_service_1.sendPasswordResetEmail)(user.email, user.fullName, resetUrl.toString());
+            }
+            catch {
+                await db_1.prisma.passwordResetToken.deleteMany({ where: { tokenHash, usedAt: null } });
+                return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+            }
+        }
+        return res.status(200).json({ success: true, message: 'If an account matches that email, password reset instructions will be sent.' });
+    }
+    catch (error) {
+        return next(error);
+    }
+};
+exports.requestPasswordReset = requestPasswordReset;
+const resetPassword = async (req, res, next) => {
+    try {
+        const token = req.body?.token;
+        const password = req.body?.password;
+        if (typeof token !== 'string' || token.length < 32 || token.length > 128 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+            throw new error_middleware_1.AppError('Use a valid reset link and a password between 8 and 128 characters.', 400);
+        }
+        const tokenHash = (0, crypto_1.createHash)('sha256').update(token).digest('hex');
+        const resetToken = await db_1.prisma.passwordResetToken.findFirst({
+            where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+            select: { id: true, userId: true },
+        });
+        if (!resetToken)
+            throw new error_middleware_1.AppError('This reset link is invalid or expired. Request a new one.', 400);
+        const hashedPassword = await (0, password_util_1.hashPassword)(password);
+        await db_1.prisma.$transaction(async (tx) => {
+            const consumed = await tx.passwordResetToken.updateMany({ where: { id: resetToken.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+            if (consumed.count !== 1)
+                throw new error_middleware_1.AppError('This reset link is invalid or expired. Request a new one.', 400);
+            await tx.user.update({ where: { id: resetToken.userId }, data: { password: hashedPassword } });
+            await tx.authSession.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+            await tx.passwordResetToken.updateMany({ where: { userId: resetToken.userId, usedAt: null }, data: { usedAt: new Date() } });
+        });
+        return res.status(200).json({ success: true, message: 'Password updated. Please sign in with your new password.' });
+    }
+    catch (error) {
+        return next(error);
+    }
+};
+exports.resetPassword = resetPassword;
 // 3. Get Current Authenticated User Profile
 const getMe = async (req, res, next) => {
     try {

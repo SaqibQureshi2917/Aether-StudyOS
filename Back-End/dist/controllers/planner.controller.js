@@ -74,6 +74,9 @@ const getPlannerOverview = async (req, res, next) => {
         return res.status(200).json({ success: true, data });
     }
     catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034') {
+            return next(new error_middleware_1.AppError('Your planner data changed while applying the schedule. Review a fresh preview and try again.', 409));
+        }
         return next(error);
     }
 };

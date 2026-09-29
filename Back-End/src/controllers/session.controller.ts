@@ -19,6 +19,9 @@ export const startSession = async (req: AuthenticatedRequest, res: Response, nex
     if (session.task.status === 'COMPLETED') throw new AppError('This study task is already complete.', 409);
 
     const now = new Date();
+    if (now.getTime() < session.scheduledStart.getTime() - 15 * 60_000) {
+      throw new AppError('This session can be started up to 15 minutes before its planned time.', 409);
+    }
     const updatedSession = await prisma.$transaction(async (tx) => {
       const activeSession = await tx.studySession.findFirst({
         where: { userId, status: 'IN_PROGRESS' },
@@ -45,7 +48,7 @@ export const startSession = async (req: AuthenticatedRequest, res: Response, nex
 export const completeSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    const { sessionId } = req.body;
+    const { sessionId, actualMinutes } = req.body;
     if (!userId) throw new AppError('Unauthorized access', 401);
     if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
 
@@ -57,10 +60,16 @@ export const completeSession = async (req: AuthenticatedRequest, res: Response, 
     if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
       throw new AppError('Only an active study session can be completed.', 409);
     }
+    if (actualMinutes !== undefined && (!Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 720)) {
+      throw new AppError('Actual study time must be between 1 and 720 minutes.', 400);
+    }
 
     const endedAt = new Date();
     const elapsedMs = Math.max(0, endedAt.getTime() - session.startedAt.getTime() - session.pauseDuration * 60_000);
-    const actualDurationHours = elapsedMs / 3_600_000;
+    if (actualMinutes === undefined && elapsedMs > 12 * 60 * 60_000) {
+      throw new AppError('This timer has been running for over 12 hours. Submit the actual study minutes to record it accurately.', 400);
+    }
+    const actualDurationHours = actualMinutes === undefined ? elapsedMs / 3_600_000 : actualMinutes / 60;
     const isPartial = actualDurationHours < session.plannedDuration;
     const status = isPartial ? 'PARTIALLY_COMPLETED' : 'COMPLETED';
 

@@ -16,6 +16,7 @@ import recommendationRoutes from './routes/recommendation.routes';
 import semesterRoutes from './routes/semester.routes';
 
 const app: Application = express();
+app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;

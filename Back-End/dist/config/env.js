@@ -23,4 +23,12 @@ exports.ENV = {
     JWT_SECRET: jwtSecret,
     GROQ_API_KEY: process.env.GROQ_API_KEY || '',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+    RESET_EMAIL_FROM: process.env.RESET_EMAIL_FROM || '',
+    APP_BASE_URL: process.env.APP_BASE_URL || 'http://localhost:3000',
+    S3_ENDPOINT: process.env.S3_ENDPOINT || '',
+    S3_BUCKET: process.env.S3_BUCKET || '',
+    S3_REGION: process.env.S3_REGION || 'auto',
+    S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID || '',
+    S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY || '',
 };

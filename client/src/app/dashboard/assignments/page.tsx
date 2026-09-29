@@ -282,7 +282,7 @@ function AssignmentsContent() {
                     <strong>{progressPct}%</strong>
                   </div>
                   <div className={styles.progressTrack}>
-                    <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
+                    <progress className={styles.progressFill} value={progressPct} max={100} aria-label={`${progressPct}% complete`} />
                   </div>
                 </div>
 

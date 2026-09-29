@@ -112,8 +112,10 @@ export const deleteSemester = async (req: AuthenticatedRequest, res: Response, n
     if (!userId) throw new AppError('Unauthorized access', 401);
     const semester = await prisma.semester.findFirst({ where: { id, userId }, select: { id: true } });
     if (!semester) throw new AppError('Semester not found.', 404);
+    const courseCount = await prisma.course.count({ where: { semesterId: id } });
+    if (courseCount > 0) throw new AppError('This semester still has subjects. Archive or delete empty subjects first; academic records are never cascaded by semester deletion.', 409);
     await prisma.semester.delete({ where: { id } });
-    res.status(200).json({ success: true, message: 'Semester and its linked course data were deleted.' });
+    res.status(200).json({ success: true, message: 'Semester deleted.' });
   } catch (error) {
     next(error);
   }

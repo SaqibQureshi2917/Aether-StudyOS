@@ -59,11 +59,19 @@ const getCourses = async (req, res, next) => {
         const { semesterId } = req.query;
         if (!userId)
             throw new error_middleware_1.AppError('Unauthorized access', 401);
-        const whereClause = {
-            semester: { userId }
-        };
+        const whereClause = { semester: { userId } };
         if (semesterId)
             whereClause.semesterId = semesterId;
+        if (req.query.includeArchived !== 'true')
+            whereClause.status = { not: 'ARCHIVED' };
+        if (typeof req.query.q === 'string' && req.query.q.trim()) {
+            const search = req.query.q.trim().slice(0, 100);
+            whereClause.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { code: { contains: search, mode: 'insensitive' } },
+                { instructor: { contains: search, mode: 'insensitive' } },
+            ];
+        }
         const courses = await db_1.prisma.course.findMany({
             where: whereClause,
             include: {
@@ -96,7 +104,7 @@ const getCourseById = async (req, res, next) => {
                 semester: true,
                 assignments: true,
                 exams: true,
-                studyTasks: true,
+                studyTasks: { include: { sessions: { where: { scheduledEnd: { gte: new Date(Date.now() - 7 * 86_400_000) } }, orderBy: { scheduledStart: 'asc' } } } },
             },
         });
         if (!course)
@@ -120,24 +128,41 @@ const updateCourse = async (req, res, next) => {
         if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 120)) {
             throw new error_middleware_1.AppError('Course name must be between 1 and 120 characters.', 400);
         }
+        if (status !== undefined && !['ACTIVE', 'ARCHIVED'].includes(status))
+            throw new error_middleware_1.AppError('Subject status must be ACTIVE or ARCHIVED.', 400);
+        if (code !== undefined && (typeof code !== 'string' || code.length > 40))
+            throw new error_middleware_1.AppError('Subject code must be 40 characters or fewer.', 400);
+        if (instructor !== undefined && (typeof instructor !== 'string' || instructor.length > 120))
+            throw new error_middleware_1.AppError('Instructor name must be 120 characters or fewer.', 400);
+        if (description !== undefined && (typeof description !== 'string' || description.length > 5000))
+            throw new error_middleware_1.AppError('Subject description must be 5,000 characters or fewer.', 400);
         const course = await db_1.prisma.course.findFirst({
             where: { id, semester: { userId } }
         });
         if (!course)
             throw new error_middleware_1.AppError('Course not found', 404);
-        const updated = await db_1.prisma.course.update({
-            where: { id },
-            data: {
-                ...(name !== undefined && { name: name.trim() }),
-                ...(code !== undefined && { code }),
-                ...(creditHours !== undefined && { creditHours: parseScaleValue(creditHours, 'Credit hours', 1, 10, 3) }),
-                ...(difficulty !== undefined && { difficulty: parseScaleValue(difficulty, 'Difficulty', 1, 5, 3) }),
-                ...(priority !== undefined && { priority: parseScaleValue(priority, 'Priority', 1, 5, 3) }),
-                ...(status && { status }),
-                ...(instructor !== undefined && { instructor }),
-                ...(description !== undefined && { description }),
-                ...(colorCode && { colorCode }),
-            },
+        const updated = await db_1.prisma.$transaction(async (tx) => {
+            const changedCourse = await tx.course.update({
+                where: { id },
+                data: {
+                    ...(name !== undefined && { name: name.trim() }),
+                    ...(code !== undefined && { code }),
+                    ...(creditHours !== undefined && { creditHours: parseScaleValue(creditHours, 'Credit hours', 1, 10, 3) }),
+                    ...(difficulty !== undefined && { difficulty: parseScaleValue(difficulty, 'Difficulty', 1, 5, 3) }),
+                    ...(priority !== undefined && { priority: parseScaleValue(priority, 'Priority', 1, 5, 3) }),
+                    ...(status && { status }),
+                    ...(instructor !== undefined && { instructor }),
+                    ...(description !== undefined && { description }),
+                    ...(colorCode && { colorCode }),
+                },
+            });
+            if (status === 'ARCHIVED') {
+                await tx.studySession.updateMany({
+                    where: { userId, status: 'SCHEDULED', scheduledEnd: { gt: new Date() }, task: { courseId: id } },
+                    data: { status: 'CANCELLED' },
+                });
+            }
+            return changedCourse;
         });
         res.status(200).json({
             success: true,
@@ -160,6 +185,12 @@ const deleteCourse = async (req, res, next) => {
         });
         if (!course)
             throw new error_middleware_1.AppError('Course not found', 404);
+        const [materials, assignments, exams, tasks] = await Promise.all([
+            db_1.prisma.courseMaterial.count({ where: { courseId: id } }), db_1.prisma.assignment.count({ where: { courseId: id } }),
+            db_1.prisma.exam.count({ where: { courseId: id } }), db_1.prisma.studyTask.count({ where: { courseId: id } }),
+        ]);
+        if (materials + assignments + exams + tasks > 0)
+            throw new error_middleware_1.AppError('This subject has academic records. Archive it to preserve its materials, assignments, and study history.', 409);
         await db_1.prisma.course.delete({ where: { id } });
         res.status(200).json({
             success: true,
