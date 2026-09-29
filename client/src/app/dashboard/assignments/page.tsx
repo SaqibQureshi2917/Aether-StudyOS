@@ -318,7 +318,7 @@ function AssignmentsContent() {
             <form onSubmit={handleCreateAssignment} className={styles.form}>
               <div className={styles.group}>
                 <label>Select Subject *</label>
-                {coursesLoading ? <p>Loading subjects...</p> : courseLoadError ? (
+                {coursesLoading ? <div className={`${skeletonStyles.box} ${skeletonStyles.controlSkeleton}`} role="status" aria-label="Loading subjects" /> : courseLoadError ? (
                   <div className={styles.noSubjects} role="alert">{courseLoadError}</div>
                 ) : courses.length === 0 ? (
                   <div className={styles.noSubjects} role="alert">

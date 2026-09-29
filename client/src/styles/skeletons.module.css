@@ -454,3 +454,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.routeSkeletonPage {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: min(100% - 2rem, 1180px);
+  min-height: 60vh;
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.routeSkeletonHeader {
+  display: flex;
+  min-height: 112px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.routeSkeletonHeader .boxSectionTitle { width: min(360px, 55vw); }
+.routeSkeletonSubtitle { width: min(500px, 65vw); height: 14px; }
+.routeSkeletonMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.routeSkeletonMetric { min-height: 92px; }
+.routeSkeletonGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.routeSkeletonCard { min-height: 180px; }
+.routeSkeletonCard .boxSectionTitle { width: 45%; }
+.routeSkeletonForm { display: grid; gap: 1rem; }
+.routeSkeletonForm .boxLargeCard { height: 86px; margin: 0; }
+.routeSkeletonLegal { display: grid; gap: 1rem; min-height: 400px; }
+.routeSkeletonLegalLine { width: 100%; height: 14px; }
+.routeSkeletonLegalLine:nth-child(3n) { width: 72%; }
+.controlSkeleton { width: min(100%, 320px); height: 40px; border-radius: 8px; }
+
+@media (max-width: 680px) {
+  .routeSkeletonHeader { min-height: 90px; }
+  .routeSkeletonHeader > .boxHeaderBtn { width: 90px; }
+  .routeSkeletonGrid { grid-template-columns: 1fr; }
+  .routeSkeletonMetrics { gap: .5rem; }
+  .routeSkeletonMetric { min-height: 76px; padding: .8rem; }
+  .routeSkeletonMetric .boxTitle { width: 45%; }
+}

@@ -8,6 +8,7 @@ import {
 } from 'react-icons/fi';
 import { apiRequest } from '@/lib/apiClient';
 import MarkdownContent from './MarkdownContent';
+import ChatPageSkeleton from '@/components/layout/ChatPageSkeleton/ChatPageSkeleton';
 import styles from './chat.module.css';
 
 type ChatMode = 'GENERAL' | 'STUDY';
@@ -407,7 +408,7 @@ function ChatWorkspace() {
         )}
 
         <div className={styles.messageStream} aria-live="polite" aria-busy={isLoadingConversation || isLoading}>
-          {isLoadingConversation && <div className={styles.loadingState}><span className={styles.loadingDot} /> Loading conversation…</div>}
+          {isLoadingConversation && <div className={styles.conversationSkeleton} role="status" aria-label="Loading conversation"><div className={styles.conversationAiSkeleton} /><div className={styles.conversationUserSkeleton} /><div className={styles.conversationAiSkeleton} /></div>}
           {!isLoadingConversation && loadError && (
             <div className={styles.emptyState} role="alert">
               <FiAlertTriangle />
@@ -531,5 +532,5 @@ function ChatWorkspace() {
 }
 
 export default function ChatPage() {
-  return <Suspense fallback={<main className={styles.main}><div className={styles.loadingState}><span className={styles.loadingDot} /> Loading chat…</div></main>}><ChatWorkspace /></Suspense>;
+  return <Suspense fallback={<ChatPageSkeleton />}><ChatWorkspace /></Suspense>;
 }

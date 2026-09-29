@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiAlertTriangle, FiArrowLeft, FiArrowRight, FiBookOpen, FiCalendar, FiCheck, FiClock, FiPlus, FiRefreshCw, FiX } from 'react-icons/fi';
 import { apiRequest } from '@/lib/apiClient';
+import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
 import styles from './planner.module.css';
 
 type Semester = { id: string; name: string; status: string; startDate: string; endDate: string | null };
@@ -296,7 +297,7 @@ export default function PlannerPage() {
         <section className={styles.emptyPanel}><div className={styles.emptyIcon}><FiCalendar /></div><h2>Set up a semester to start planning</h2><p>Add a semester, subjects, study tasks, and weekly availability. The planner will use those details to create a realistic proposal.</p><button type="button" className={styles.primaryActionBtn} onClick={() => router.push('/onboarding')}>Open semester setup</button></section>
       )}
 
-      {loading && <div className={styles.loadingPanel} role="status">Loading your semester plan…</div>}
+      {loading && <PageSkeleton kind="collection" />}
 
       {!loading && overview && (
         <>

@@ -6,4 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = __importDefault(require("./app"));
 const env_1 = require("./config/env");
 const PORT = parseInt(env_1.ENV.PORT, 10);
-app_1.default.listen(PORT);
+app_1.default.listen(PORT, () => {
+    console.log(`Backend is Running on — port ${PORT}`);
+});

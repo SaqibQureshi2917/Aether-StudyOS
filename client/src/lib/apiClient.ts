@@ -1,5 +1,18 @@
-// Browser requests from the deployed frontend intentionally target the user's local API by default.
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api/v1').replace(/\/+$/, '');
+// Local development uses the local API by default. Deployed builds must explicitly
+// configure a public backend URL instead of silently calling each visitor's localhost.
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+const API_BASE_URL = (configuredApiBaseUrl || (process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api/v1' : '')).replace(/\/+$/, '');
+
+function assertApiConfigured() {
+  if (!API_BASE_URL) {
+    throw {
+      message: 'Backend API URL is not configured. Set NEXT_PUBLIC_API_BASE_URL in the Vercel project settings and redeploy.',
+      code: 'API_NOT_CONFIGURED',
+      status: 500,
+      response: { data: null },
+    };
+  }
+}
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -32,8 +45,9 @@ export function clearApiResponseCache() {
 export async function apiRequest<T>(
   endpoint: string,
   method: HttpMethod = 'GET',
-  body?: any
+  body?: unknown
 ): Promise<T> {
+  assertApiConfigured();
   const isGetRequest = method === 'GET';
   const cacheKey = isGetRequest ? getRequestCacheKey(endpoint) : '';
 
@@ -104,13 +118,13 @@ export async function apiRequest<T>(
       }
       if (!isGetRequest) clearApiResponseCache();
       return data as T;
-    } catch (error: any) {
-      if (error.status) throw error;
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'status' in error) throw error;
 
       throw {
         message: API_BASE_URL.includes('localhost')
           ? 'Could not reach your local backend. Make sure the server is running on port 5000 and allow this site to access your local network in the browser.'
-          : error.message || 'Network error. Please check your connection.',
+          : error instanceof Error ? error.message : 'Network error. Please check your connection.',
         code: 'NETWORK_ERROR',
         status: 500,
         response: { data: null },
@@ -131,6 +145,7 @@ export async function apiRequest<T>(
 }
 
 export async function downloadApiFile(endpoint: string) {
+  assertApiConfigured();
   const headers: Record<string, string> = {};
   if (typeof window !== 'undefined') {
     const sessionToken = window.sessionStorage.getItem('studyos_token');

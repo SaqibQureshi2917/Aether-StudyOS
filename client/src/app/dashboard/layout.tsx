@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar/Sidebar';
 import Header from '@/components/layout/Header/Header';
+import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
 import { useAuth } from '@/context/AuthContext';
 import styles from './dashboard.module.css';
 
@@ -28,7 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       );
     }
-    return <div role="status" aria-live="polite">Loading your workspace...</div>;
+    return <PageSkeleton kind="collection" />;
   }
 
   return (

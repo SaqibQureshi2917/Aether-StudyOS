@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import OnboardingWizard from "@/components/features/Onboarding/OnboardingWizard";
+import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
 import styles from './onboardingPage.module.css'
 export default function OnboardingPage(){
     const router = useRouter();
@@ -17,7 +18,7 @@ export default function OnboardingPage(){
         if (authStatus === 'error') {
             return <div role="alert">{authError} <button type="button" onClick={() => void refreshUser()}>Retry</button></div>;
         }
-        return <div role="status" aria-live="polite">Checking your account...</div>;
+        return <PageSkeleton kind="form" />;
     }
 
     return(

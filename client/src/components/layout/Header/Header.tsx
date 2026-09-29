@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FiUser, FiSettings, FiLogOut, FiChevronDown, FiChevronLeft, FiChevronRight, FiMenu, FiX } from 'react-icons/fi';
@@ -21,24 +21,30 @@ export default function Header({ onToggleSidebar, onToggleCollapse, isSidebarCol
   const { user, clearAuthentication } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [userData, setUserData] = useState<{
-    fullName: string;
-    major: string;
-    semester: string;
-  }>({
-    fullName: 'Student',
-    major: '',
-    semester: '',
-  });
+  const profileWrapperRef = useRef<HTMLDivElement>(null);
+  const userData = {
+    fullName: user?.fullName || 'Student',
+    major: user?.major || '',
+    semester: user?.currentSemester || '',
+  };
 
   useEffect(() => {
-    if (!user) return;
-    setUserData({
-      fullName: user.fullName || 'Student',
-      major: user.major || '',
-      semester: user.currentSemester || '',
-    });
-  }, [user]);
+    if (!isMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !profileWrapperRef.current?.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isMenuOpen]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -95,7 +101,7 @@ export default function Header({ onToggleSidebar, onToggleCollapse, isSidebarCol
       {/* Right Controls & Account Widget */}
       <div className={styles.actionsBlock}>
         {/* User Account Profile Widget */}
-        <div className={styles.profileWrapper}>
+        <div className={styles.profileWrapper} ref={profileWrapperRef}>
           <button 
             type="button" 
             className={styles.profileBtn}

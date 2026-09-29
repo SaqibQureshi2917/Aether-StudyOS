@@ -3,11 +3,17 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
+import ConfirmDialog from '@/components/layout/ConfirmDialog/ConfirmDialog';
+import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
 import styles from './courses.module.css';
 
 type Semester = { id: string; name: string; startDate: string; endDate: string | null; status: 'ACTIVE' | 'COMPLETED' | 'PLANNED'; _count?: { courses: number } };
 type Course = { id: string; name: string; code: string | null; creditHours: number; difficulty: number; priority: number; semesterId: string; status: string; semester?: { name: string } };
 type ApiResponse<T> = { success: boolean; data: T };
+type PendingConfirmation =
+  | { kind: 'delete-semester'; semester: Semester }
+  | { kind: 'delete-course'; course: Course }
+  | { kind: 'course-status'; course: Course; status: 'ACTIVE' | 'ARCHIVED' };
 
 function errorText(error: unknown, fallback: string) {
   return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : fallback;
@@ -27,6 +33,9 @@ export default function CoursesPage() {
   const [busy, setBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmationError, setConfirmationError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -34,8 +43,8 @@ export default function CoursesPage() {
       const cachedSemesters = getCachedApiResponse<{ data?: { semesters?: Semester[] } }>('/semesters')?.data?.semesters;
       const coursesEndpoint = `/courses?includeArchived=${showArchived}`;
       const cachedCourses = getCachedApiResponse<{ data?: { courses?: Course[] } }>(coursesEndpoint)?.data?.courses;
-      if (cachedSemesters) setSemesters(cachedSemesters);
-      if (cachedCourses) setCourses(cachedCourses);
+      if (cachedSemesters) { setSemesters(cachedSemesters); setHasLoaded(true); }
+      if (cachedCourses) { setCourses(cachedCourses); setHasLoaded(true); }
       const [semesterResponse, courseResponse] = await Promise.all([
         apiRequest<ApiResponse<{ semesters: Semester[] }>>('/semesters', 'GET'),
         apiRequest<ApiResponse<{ courses: Course[] }>>(coursesEndpoint, 'GET'),
@@ -44,8 +53,10 @@ export default function CoursesPage() {
       setSemesters(nextSemesters);
       setCourses(courseResponse.data?.courses ?? []);
       setSemesterId((current) => current || nextSemesters.find((s) => s.status === 'ACTIVE')?.id || nextSemesters[0]?.id || '');
+      setHasLoaded(true);
     } catch (cause: unknown) {
       setError(errorText(cause, 'Could not load courses and semesters.'));
+      setHasLoaded(true);
     }
   }, [showArchived]);
 
@@ -77,20 +88,14 @@ export default function CoursesPage() {
     finally { setBusy(false); }
   };
 
-  const removeSemester = async (semester: Semester) => {
-    if (!window.confirm(`Delete empty semester “${semester.name}”? Semesters with subjects cannot be deleted. This cannot be undone.`)) return;
-    setBusy(true); setError(''); setMessage('');
-    try { await apiRequest(`/semesters/${semester.id}`, 'DELETE'); setMessage('Semester deleted.'); await load(); }
-    catch (cause: unknown) { setError(errorText(cause, 'Could not delete semester.')); }
-    finally { setBusy(false); }
+  const removeSemester = (semester: Semester) => {
+    setConfirmationError('');
+    setPendingConfirmation({ kind: 'delete-semester', semester });
   };
 
-  const removeCourse = async (course: Course) => {
-    if (!window.confirm(`Delete “${course.name}” and its linked assignments and study data? This cannot be undone.`)) return;
-    setBusy(true); setError(''); setMessage('');
-    try { await apiRequest(`/courses/${course.id}`, 'DELETE'); setMessage('Course deleted.'); await load(); }
-    catch (cause: unknown) { setError(errorText(cause, 'Could not delete course.')); }
-    finally { setBusy(false); }
+  const removeCourse = (course: Course) => {
+    setConfirmationError('');
+    setPendingConfirmation({ kind: 'delete-course', course });
   };
 
   const renameCourse = async (course: Course) => {
@@ -104,15 +109,34 @@ export default function CoursesPage() {
 
   const archiveCourse = async (course: Course) => {
     const status = course.status === 'ARCHIVED' ? 'ACTIVE' : 'ARCHIVED';
-    const action = status === 'ARCHIVED' ? 'Archive' : 'Restore';
-    if (!window.confirm(`${action} “${course.name}”? Its academic records and materials will be preserved.`)) return;
-    setBusy(true); setError(''); setMessage('');
-    try { await apiRequest(`/courses/${course.id}`, 'PUT', { status }); setMessage(status === 'ARCHIVED' ? 'Subject archived; records preserved.' : 'Subject restored.'); await load(); }
-    catch (cause: unknown) { setError(errorText(cause, 'Could not update subject status.')); }
-    finally { setBusy(false); }
+    setConfirmationError('');
+    setPendingConfirmation({ kind: 'course-status', course, status });
+  };
+
+  const confirmAction = async () => {
+    if (!pendingConfirmation) return;
+    setBusy(true); setConfirmationError(''); setError(''); setMessage('');
+    try {
+      if (pendingConfirmation.kind === 'delete-semester') {
+        await apiRequest(`/semesters/${pendingConfirmation.semester.id}`, 'DELETE');
+        setMessage('Semester deleted.');
+      } else if (pendingConfirmation.kind === 'delete-course') {
+        await apiRequest(`/courses/${pendingConfirmation.course.id}`, 'DELETE');
+        setMessage('Subject deleted.');
+      } else {
+        await apiRequest(`/courses/${pendingConfirmation.course.id}`, 'PUT', { status: pendingConfirmation.status });
+        setMessage(pendingConfirmation.status === 'ARCHIVED' ? 'Subject archived; records preserved.' : 'Subject restored.');
+      }
+      setPendingConfirmation(null);
+      await load();
+    } catch (cause: unknown) {
+      setConfirmationError(errorText(cause, 'This action could not be completed.'));
+    } finally { setBusy(false); }
   };
 
   const visibleCourses = courses.filter((course) => `${course.name} ${course.code || ''} ${course.semester?.name || ''}`.toLowerCase().includes(search.toLowerCase()));
+
+  if (!hasLoaded && !error) return <PageSkeleton kind="collection" />;
 
   return <main className={styles.page}>
     <h1>Subjects & Semesters</h1>
@@ -129,7 +153,7 @@ export default function CoursesPage() {
           <span>{semester.status} · {semester._count?.courses ?? courses.filter((c) => c.semesterId === semester.id).length} courses</span>
           {semester.status !== 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void updateStatus(semester, 'ACTIVE')}>Make active</button>}
           {semester.status === 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void updateStatus(semester, 'COMPLETED')}>Complete</button>}
-          <button type="button" disabled={busy} onClick={() => void removeSemester(semester)}>Delete</button>
+          <button type="button" disabled={busy || (semester._count?.courses ?? courses.filter((course) => course.semesterId === semester.id).length) > 0} onClick={() => removeSemester(semester)}>Delete</button>
         </li>)}
       </ul>
       <form onSubmit={createSemester} className={styles.form}>
@@ -160,9 +184,20 @@ export default function CoursesPage() {
           <Link href={`/dashboard/courses/${course.id}`}>Open workspace</Link>
           <button type="button" disabled={busy} onClick={() => void renameCourse(course)}>Rename</button>
           <button type="button" disabled={busy} onClick={() => void archiveCourse(course)}>{course.status === 'ARCHIVED' ? 'Restore' : 'Archive'}</button>
-          <button type="button" disabled={busy} onClick={() => void removeCourse(course)}>Delete if empty</button>
+          <button type="button" disabled={busy} onClick={() => removeCourse(course)}>Delete if empty</button>
         </li>)}
       </ul>}
     </section>
+    {pendingConfirmation && <ConfirmDialog
+      title={pendingConfirmation.kind === 'delete-semester' ? 'Delete this semester?' : pendingConfirmation.kind === 'delete-course' ? 'Delete this subject?' : `${pendingConfirmation.status === 'ARCHIVED' ? 'Archive' : 'Restore'} this subject?`}
+      description={pendingConfirmation.kind === 'delete-semester' ? `Delete “${pendingConfirmation.semester.name}”? Only empty semesters can be deleted.` : pendingConfirmation.kind === 'delete-course' ? `Delete “${pendingConfirmation.course.name}”? Subjects with academic records cannot be deleted; archive it to preserve its history.` : `Update “${pendingConfirmation.course.name}”? Its materials and academic history will be preserved.`}
+      confirmLabel={pendingConfirmation.kind === 'delete-semester' || pendingConfirmation.kind === 'delete-course' ? 'Delete' : pendingConfirmation.status === 'ARCHIVED' ? 'Archive subject' : 'Restore subject'}
+      busyLabel="Saving…"
+      isBusy={busy}
+      errorMessage={confirmationError}
+      tone={pendingConfirmation.kind === 'course-status' ? 'warning' : 'danger'}
+      onCancel={() => { if (!busy) { setPendingConfirmation(null); setConfirmationError(''); } }}
+      onConfirm={confirmAction}
+    />}
   </main>;
 }

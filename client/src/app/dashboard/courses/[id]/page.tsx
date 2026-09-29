@@ -4,6 +4,8 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiRequest, downloadApiFile } from '@/lib/apiClient';
+import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
+import ConfirmDialog from '@/components/layout/ConfirmDialog/ConfirmDialog';
 import styles from './subject.module.css';
 
 type Subject = { id: string; name: string; code: string | null; instructor: string | null; description: string | null; status: string; semester: { id: string; name: string }; assignments: Array<{ id: string; title: string; deadline: string; status: string }>; exams: Array<{ id: string; title: string; date: string }>; studyTasks: Array<{ id: string; title: string; sessions: Array<{ id: string; scheduledStart: string; scheduledEnd: string; plannedDuration: number; status: string; startedAt: string | null }> }> };
@@ -27,6 +29,9 @@ export default function SubjectWorkspacePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [pendingMaterialDelete, setPendingMaterialDelete] = useState<Material | null>(null);
+  const [materialDeleteError, setMaterialDeleteError] = useState('');
 
   const load = useCallback(async () => {
     const [subjectResponse, materialsResponse] = await Promise.all([
@@ -42,6 +47,11 @@ export default function SubjectWorkspacePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load().catch((cause: unknown) => setError(errorText(cause, 'Could not load this subject.')));
   }, [load]);
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    return () => window.clearInterval(clock);
+  }, []);
 
   const upload = async (event: FormEvent) => {
     event.preventDefault();
@@ -92,10 +102,17 @@ export default function SubjectWorkspacePage() {
   };
 
   const remove = async (material: Material) => {
-    if (!window.confirm(`Delete “${material.title}”? Its indexed Tutor content and saved citations will also be removed.`)) return;
-    setBusy(true); setError('');
-    try { await apiRequest(`/materials/${material.id}`, 'DELETE'); setNotice('Document deleted.'); await load(); }
-    catch (cause: unknown) { setError(errorText(cause, 'The document could not be deleted.')); }
+    setMaterialDeleteError('');
+    setPendingMaterialDelete(material);
+  };
+
+  const confirmRemove = async () => {
+    if (!pendingMaterialDelete) return;
+    setBusy(true); setMaterialDeleteError('');
+    try {
+      await apiRequest(`/materials/${pendingMaterialDelete.id}`, 'DELETE');
+      setPendingMaterialDelete(null); setNotice('Document deleted.'); await load();
+    } catch (cause: unknown) { setMaterialDeleteError(errorText(cause, 'The document could not be deleted.')); }
     finally { setBusy(false); }
   };
 
@@ -131,7 +148,9 @@ export default function SubjectWorkspacePage() {
   };
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => setFile(event.target.files?.[0] || null);
-  if (!subject && !error) return <main className={styles.page}><p>Loading subject workspace…</p></main>;
+  if (!subject) return error
+    ? <main className={styles.page}><p className={styles.error} role="alert">{error}</p><Link className={styles.back} href="/dashboard/courses">Back to subjects</Link></main>
+    : <PageSkeleton kind="subject" />;
 
   const visibleMaterials = materials.filter((material) => material.title.toLowerCase().includes(search.toLowerCase()));
   const pendingAssignments = subject?.assignments.filter((assignment) => assignment.status !== 'COMPLETED').length || 0;
@@ -168,7 +187,36 @@ export default function SubjectWorkspacePage() {
         })}</div>}
       </section>
       <section className={styles.panel}><h2>Assignments & exams</h2>{subject.assignments.length === 0 && subject.exams.length === 0 ? <p className={styles.empty}>No assignments or exams are recorded for this subject.</p> : <ul className={styles.workList}>{subject.assignments.map((assignment) => <li key={assignment.id}><strong>{assignment.title}</strong><span>{assignment.status.toLowerCase().replaceAll('_', ' ')} · due {new Date(assignment.deadline).toLocaleDateString()}</span></li>)}{subject.exams.map((exam) => <li key={exam.id}><strong>{exam.title}</strong><span>Exam · {new Date(exam.date).toLocaleDateString()}</span></li>)}</ul>}<Link href="/dashboard/assignments">Manage assignments</Link></section>
-      <section className={styles.panel}><h2>Study sessions</h2><p>Start and complete this subject’s scheduled sessions here or from the Planner.</p>{subjectSessions.length === 0 ? <p className={styles.empty}>No sessions scheduled for this subject. Add weekly availability in the Planner, then review and apply a schedule.</p> : <ul className={styles.workList}>{subjectSessions.map((session) => { const ended = new Date(session.scheduledEnd) <= new Date(); return <li key={session.id}><div><strong>{session.taskTitle}</strong><span>{new Date(session.scheduledStart).toLocaleString()} · {session.plannedDuration.toFixed(1)}h</span></div><div className={styles.sessionControls}><span>{session.status.toLowerCase().replaceAll('_', ' ')}</span>{session.status === 'SCHEDULED' && <button type="button" disabled={busy} onClick={() => void actOnSession(session, ended ? 'missed' : 'start')}>{ended ? 'Mark missed' : 'Start'}</button>}{session.status === 'IN_PROGRESS' && <button type="button" disabled={busy} onClick={() => void actOnSession(session, 'complete')}>Complete</button>}</div></li>; })}</ul>}<Link href="/dashboard/planner">View weekly planner</Link></section>
+      <section className={styles.panel}>
+        <h2>Study sessions</h2>
+        <p>Start a scheduled session here or in the Planner. Starting is available 15 minutes before its planned time; choose Complete when you finish.</p>
+        {subjectSessions.length === 0 ? <p className={styles.empty}>No sessions scheduled for this subject. Add weekly availability in the Planner, then preview and apply a schedule.</p> : (
+          <ul className={styles.workList}>{subjectSessions.map((session) => {
+            const ended = new Date(session.scheduledEnd).getTime() <= currentTime;
+            const canStart = currentTime >= new Date(session.scheduledStart).getTime() - 15 * 60_000;
+            return <li key={session.id}>
+              <div><strong>{session.taskTitle}</strong><span>{new Date(session.scheduledStart).toLocaleString()} · {session.plannedDuration.toFixed(1)}h</span></div>
+              <div className={styles.sessionControls}>
+                <span>{session.status.toLowerCase().replaceAll('_', ' ')}</span>
+                {session.status === 'SCHEDULED' && <button type="button" disabled={busy || (!ended && !canStart)} onClick={() => void actOnSession(session, ended ? 'missed' : 'start')} title={!ended && !canStart ? 'Available 15 minutes before the scheduled start' : undefined}>{ended ? 'Mark missed' : 'Start'}</button>}
+                {session.status === 'IN_PROGRESS' && <button type="button" disabled={busy} onClick={() => void actOnSession(session, 'complete')}>Complete</button>}
+              </div>
+            </li>;
+          })}</ul>
+        )}
+        <Link href="/dashboard/planner">View weekly planner</Link>
+      </section>
     </>}
+    {pendingMaterialDelete && <ConfirmDialog
+      title="Delete this material?"
+      description={`Delete “${pendingMaterialDelete.title}”? Its indexed Tutor content and saved citations will also be removed.`}
+      confirmLabel="Delete material"
+      busyLabel="Deleting material…"
+      isBusy={busy}
+      errorMessage={materialDeleteError}
+      tone="danger"
+      onCancel={() => { if (!busy) { setPendingMaterialDelete(null); setMaterialDeleteError(''); } }}
+      onConfirm={confirmRemove}
+    />}
   </main>;
 }

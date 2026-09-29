@@ -18,6 +18,7 @@ import {
   FiPlus,
   FiMessageCircle,
   FiBookOpen,
+  FiX,
 } from 'react-icons/fi';
 import styles from './Sidebar.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
@@ -88,6 +89,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
   }, [pathname, onCloseMobile]);
 
   const handleCreateNewChat = () => {
+    onCloseMobile();
     router.push('/dashboard/chat?new=true');
   };
 
@@ -104,6 +106,12 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
           ${isCollapsed ? styles.collapsed : ''}
         `}
       >
+        <div className={styles.mobileHeader}>
+          <span className={styles.mobileTitle}>StudyOS Menu</span>
+          <button type="button" className={styles.closeDrawerBtn} onClick={onCloseMobile} aria-label="Close sidebar">
+            <FiX />
+          </button>
+        </div>
         <button 
           type="button" 
           onClick={handleCreateNewChat} 
@@ -126,6 +134,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
                 key={idx}
                 href={item.href}
                 className={isActive ? styles.activeNavLink : styles.navLink}
+                onClick={onCloseMobile}
                 title={isCollapsed ? item.label : undefined}
               >
                 <span className={styles.navIcon}>{item.icon}</span>
@@ -152,6 +161,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
                 key={idx}
                 href={item.href}
                 className={isActive ? styles.activeNavLink : styles.navLink}
+                onClick={onCloseMobile}
                 title={isCollapsed ? item.label : undefined}
               >
                 <span className={styles.navIcon}>{item.icon}</span>
@@ -192,6 +202,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
                         key={chat.id}
                         href={`/dashboard/chat?threadId=${chat.id}`}
                         className={isActive ? styles.activeChatItem : styles.chatItem}
+                        onClick={onCloseMobile}
                       >
                         <FiMessageCircle className={styles.chatIcon} />
                         <span className={styles.chatTitle}>{chat.title}</span>

@@ -151,6 +151,9 @@
 .loadingState, .thinkingState { margin: auto; display: flex; align-items: center; justify-content: center; gap: 0.6rem; color: var(--text-muted); font-size: 0.82rem; }
 .thinkingState { align-self: flex-start; margin: 0.2rem 0; }
 .loadingDot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--brand-accent); animation: pulse 1.2s ease-in-out infinite; }
+.conversationSkeleton { display: grid; gap: 1rem; padding: 1rem 1.2rem; }
+.conversationAiSkeleton, .conversationUserSkeleton { height: 76px; width: min(70%, 560px); border-radius: 14px; background: var(--surface-card); border: 1px solid var(--border); animation: pulse 1.5s ease-in-out infinite; }
+.conversationUserSkeleton { justify-self: end; width: min(48%, 380px); height: 52px; }
 @keyframes pulse { 50% { opacity: 0.35; transform: scale(0.8); } }
 
 .chatError, .uploadNotice, .copyNotice { margin: 0 1.2rem 0.5rem; padding: 0.65rem 0.8rem; display: flex; align-items: flex-start; gap: 0.55rem; border-radius: 8px; font-size: 0.78rem; line-height: 1.45; }
