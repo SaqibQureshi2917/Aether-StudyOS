@@ -170,6 +170,23 @@
   gap: 0.5rem;
 }
 
+.taskError {
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.taskBudget {
+  margin: 0.25rem 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 .addTaskForm input {
   flex: 1;
   padding: 0.65rem;
@@ -200,10 +217,25 @@
   background-color: var(--brand-accent);
   color: #ffffff;
   border: none;
-  padding: 0.65rem 1rem;
+  min-height: 42px;
+  padding: 0.55rem 0.8rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
+  transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.addTaskForm button:hover:not(:disabled), .aiBtn:hover:not(:disabled), .focusBtn:hover:not(:disabled), .statusPendingBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+.addTaskForm button:focus-visible, .aiBtn:focus-visible, .focusBtn:focus-visible, .statusPendingBtn:focus-visible, .statusCompletedBtn:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.45);
+  outline-offset: 2px;
 }
 
 .taskList {
@@ -471,6 +503,40 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.choiceOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 18, 30, 0.68);
+}
+
+.choiceDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: min(100%, 520px);
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-card);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+}
+
+.choiceDialog h2 { color: var(--text-primary); font-size: 1.15rem; }
+.choiceDialog > p { color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; }
+.choiceDialog button { min-height: 44px; padding: 0.7rem 0.9rem; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.keepMilestonesButton { border: 1px solid var(--brand-accent); background: var(--brand-accent); color: #fff; }
+.replaceMilestonesButton { border: 1px solid #dc2626; background: rgba(220, 38, 38, 0.08); color: #b91c1c; }
+.cancelChoiceButton { border: 1px solid var(--border); background: var(--surface); color: var(--text-primary); }
+.choiceNote { font-size: 0.78rem !important; }
+.choiceDialog button:hover:not(:disabled) { filter: brightness(1.07); }
+.choiceDialog button:focus-visible { outline: 3px solid rgba(99, 102, 241, 0.45); outline-offset: 2px; }
+.choiceDialog button:disabled { cursor: wait; opacity: 0.6; }
 .statusPendingBtn, .statusCompletedBtn {
   font-size: 0.75rem;
   padding: 0.35rem 0.75rem;
@@ -514,7 +580,7 @@
 }
 
 @media (max-width: 540px) {
-  .topNav { gap: 0.5rem; }
+  .topNav { gap: 0.5rem; flex-wrap: wrap; }
   .backBtn { font-size: 0.78rem; }
   .deleteBtn { padding: 0.45rem 0.55rem; font-size: 0.72rem; }
   .heroHeader { align-items: flex-start; flex-direction: column; gap: 0.65rem; }
@@ -523,7 +589,8 @@
   .progressLabel { gap: 0.5rem; }
   .addTaskForm { flex-wrap: wrap; }
   .addTaskForm > input { flex: 1 1 100%; min-width: 0; }
-  .taskDurationField { flex: 1; }
+  .taskDurationField { flex: 1 1 5.5rem; }
+  .addTaskForm button { min-height: 42px; padding: 0.55rem 0.7rem; }
   .taskItem { gap: 0.45rem; padding: 0.6rem; }
   .taskTitle { font-size: 0.8rem; overflow-wrap: anywhere; }
   .taskDuration { font-size: 0.68rem; }

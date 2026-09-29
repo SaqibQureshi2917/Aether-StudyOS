@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 // import Header from '@/components/layout/Header/Header';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
 import { useToast } from '@/components/layout/toast/ToastContext';
 import { 
   FiArrowLeft, 
@@ -42,6 +42,8 @@ interface AssignmentDetail {
   tasks: Task[];
 }
 
+type CachedAssignmentDetail = Omit<AssignmentDetail, 'tasks'> & { studyTasks?: Task[] };
+
 export default function AssignmentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -54,13 +56,14 @@ export default function AssignmentDetailPage() {
 
   // Task Creation State
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskMinutes, setNewTaskMinutes] = useState(60);
+  const [newTaskMinutes, setNewTaskMinutes] = useState('60');
+  const [taskError, setTaskError] = useState('');
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isGeneratingMilestones, setIsGeneratingMilestones] = useState(false);
-  const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
-  const [regenerateError, setRegenerateError] = useState('');
+  const [isMilestoneChoiceOpen, setIsMilestoneChoiceOpen] = useState(false);
+  const [milestoneGenerationError, setMilestoneGenerationError] = useState('');
 
   // Custom Delete Confirmation Modal States
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -71,7 +74,9 @@ export default function AssignmentDetailPage() {
   // Silent Fetcher
   const fetchAssignmentDetail = useCallback(async (isInitial = false) => {
     try {
-      if (isInitial) setLoading(true);
+      const cachedAssignment = getCachedApiResponse<{ data?: { assignment?: CachedAssignmentDetail } }>(`/assignments/${assignmentId}`)?.data?.assignment;
+      if (cachedAssignment) setAssignment({ ...cachedAssignment, tasks: cachedAssignment.studyTasks || [] });
+      if (isInitial && !cachedAssignment) setLoading(true);
       const res: any = await apiRequest(`/assignments/${assignmentId}`, 'GET');
       if (res.data?.assignment) {
         const { studyTasks, ...assignmentData } = res.data.assignment;
@@ -94,8 +99,7 @@ export default function AssignmentDetailPage() {
       await apiRequest(`/assignments/${assignmentId}/tasks/${taskId}`, 'PATCH');
       await fetchAssignmentDetail(false);
     } catch (err: any) {
-      console.error('Failed to toggle task:', err);
-      showToast(err.message || 'Failed to update milestone.', 'error');
+      showToast(err.message || 'This milestone could not be updated. Please try again.', 'error');
     } finally {
       setBusyTaskId(null);
     }
@@ -103,21 +107,38 @@ export default function AssignmentDetailPage() {
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskTitle.trim()) return;
+    setTaskError('');
+    if (!newTaskTitle.trim()) {
+      setTaskError('Enter a name for this milestone.');
+      return;
+    }
+    const minutes = Number(newTaskMinutes);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) {
+      setTaskError('Enter a whole number of minutes between 1 and 60,000.');
+      return;
+    }
+    const allocatedMinutes = assignment?.tasks.reduce((total, task) => total + task.estimatedHours * 60, 0) ?? 0;
+    const assignmentMinutes = Math.round((assignment?.estimatedHours ?? 0) * 60);
+    const remainingMinutes = Math.max(0, assignmentMinutes - allocatedMinutes);
+    if (minutes > remainingMinutes) {
+      setTaskError(`This milestone is ${minutes} minutes, but only ${Math.floor(remainingMinutes + 0.000001)} minutes remain in this ${assignmentMinutes}-minute assignment. Reduce the milestone time to fit.`);
+      return;
+    }
 
     try {
       setIsAddingTask(true);
       await apiRequest(`/assignments/${assignmentId}/tasks`, 'POST', {
         title: newTaskTitle.trim(),
-        estimatedHours: newTaskMinutes / 60,
+        estimatedHours: minutes / 60,
       });
       setNewTaskTitle('');
-      setNewTaskMinutes(60);
+      setNewTaskMinutes('60');
       showToast('Milestone added successfully!', 'success');
       await fetchAssignmentDetail(false);
-    } catch (err) {
-      console.error('Failed to add task:', err);
-      showToast('Failed to add milestone.', 'error');
+    } catch (err: any) {
+      const message = err?.message || 'This milestone could not be added. Please try again.';
+      setTaskError(message);
+      showToast(message, 'error');
     } finally {
       setIsAddingTask(false);
     }
@@ -130,7 +151,6 @@ export default function AssignmentDetailPage() {
       showToast('Milestone deleted successfully.', 'info');
       await fetchAssignmentDetail(false);
     } catch (err: any) {
-      console.error('Failed to delete task:', err);
       showToast(err.message || 'Failed to delete milestone.', 'error');
     } finally {
       setBusyTaskId(null);
@@ -143,7 +163,6 @@ export default function AssignmentDetailPage() {
       await apiRequest(`/assignments/${assignmentId}/status`, 'PATCH');
       await fetchAssignmentDetail(false);
     } catch (err: any) {
-      console.error('Failed to update assignment status:', err);
       showToast(err.message || 'Failed to update assignment status.', 'error');
     } finally {
       setIsUpdatingStatus(false);
@@ -167,25 +186,24 @@ export default function AssignmentDetailPage() {
   const handleAICoachBreakdown = async () => {
     if (isGeneratingMilestones || isAddingTask || busyTaskId) return;
     if (assignment?.tasks.length) {
-      setRegenerateError('');
-      setIsRegenerateModalOpen(true);
+      setMilestoneGenerationError('');
+      setIsMilestoneChoiceOpen(true);
       return;
     }
-    await generateMilestones();
+    await generateMilestones(true);
   };
 
-  const generateMilestones = async () => {
+  const generateMilestones = async (preserveExisting: boolean) => {
     try {
       setIsGeneratingMilestones(true);
-      setRegenerateError('');
-      await apiRequest(`/assignments/${assignmentId}/tasks/regenerate`, 'POST');
+      setMilestoneGenerationError('');
+      const result: any = await apiRequest(`/assignments/${assignmentId}/tasks/regenerate`, 'POST', { preserveExisting });
       await fetchAssignmentDetail(false);
-      setIsRegenerateModalOpen(false);
-      showToast('Milestones regenerated successfully.', 'success');
+      setIsMilestoneChoiceOpen(false);
+      showToast(result.data?.message || 'Your AI milestone plan is ready.', 'success');
     } catch (err: any) {
-      console.error('AI Coach Task Generation Error:', err);
-      if (isRegenerateModalOpen) setRegenerateError(err.message || 'Failed to regenerate milestones.');
-      else showToast(err.message || 'Failed to generate milestones.', 'error');
+      if (isMilestoneChoiceOpen) setMilestoneGenerationError(err.message || 'Milestones could not be generated. Please try again.');
+      else showToast(err.message || 'Milestones could not be generated. Please try again.', 'error');
     } finally {
       setIsGeneratingMilestones(false);
     }
@@ -305,12 +323,16 @@ export default function AssignmentDetailPage() {
             <span>{completedTasks} of {totalTasks} Done</span>
           </div>
 
+          {taskError && <p className={styles.taskError} role="alert">{taskError}</p>}
+          <p className={styles.taskBudget}>
+            Available assignment time: {formatStudyDuration(Math.max(0, assignment.estimatedHours - assignment.tasks.reduce((total, task) => total + task.estimatedHours, 0)))}
+          </p>
           <form onSubmit={handleAddTask} className={styles.addTaskForm}>
             <input
               type="text"
-              placeholder="Add new milestone (e.g. Prepare dataset)..."
+              placeholder="Enter milestone name"
               value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
+              onChange={(e) => { setNewTaskTitle(e.target.value); setTaskError(''); }}
               required
               disabled={isAddingTask || isGeneratingMilestones}
             />
@@ -318,11 +340,11 @@ export default function AssignmentDetailPage() {
               Minutes
               <input
                 type="number"
-                min="7"
+                min="1"
                 max="60000"
                 step="1"
                 value={newTaskMinutes}
-                onChange={(e) => setNewTaskMinutes(Math.max(7, parseInt(e.target.value, 10) || 7))}
+                onChange={(e) => { setNewTaskMinutes(e.target.value); setTaskError(''); }}
                 aria-label="Milestone estimated time in minutes"
                 disabled={isAddingTask || isGeneratingMilestones}
               />
@@ -362,7 +384,7 @@ export default function AssignmentDetailPage() {
             </div>
             <p>Need help breaking this assignment down into manageable study milestones?</p>
             <button type="button" onClick={handleAICoachBreakdown} className={styles.aiBtn} disabled={isGeneratingMilestones || isAddingTask || Boolean(busyTaskId)}>
-              {isGeneratingMilestones ? 'Generating milestones...' : totalTasks ? 'Regenerate Milestones' : 'Auto-Generate Milestones'}
+              {isGeneratingMilestones ? 'Creating your AI plan...' : totalTasks ? 'Create AI Milestones' : 'Generate AI Milestones'}
             </button>
           </div>
 
@@ -389,17 +411,22 @@ export default function AssignmentDetailPage() {
           onConfirm={confirmDeleteAssignment}
         />
       )}
-      {isRegenerateModalOpen && (
-        <ConfirmDialog
-          title="Replace existing milestones?"
-          description="The current milestones and their linked scheduled study sessions will be removed and replaced with a new set. Any active study session must be stopped first."
-          confirmLabel="Yes, replace milestones"
-          busyLabel="Replacing milestones..."
-          isBusy={isGeneratingMilestones}
-          errorMessage={regenerateError}
-          onCancel={() => setIsRegenerateModalOpen(false)}
-          onConfirm={generateMilestones}
-        />
+      {isMilestoneChoiceOpen && (
+        <div className={styles.choiceOverlay} onClick={() => !isGeneratingMilestones && setIsMilestoneChoiceOpen(false)}>
+          <section className={styles.choiceDialog} role="dialog" aria-modal="true" aria-labelledby="milestone-choice-title" onClick={(event) => event.stopPropagation()}>
+            <h2 id="milestone-choice-title">What should happen to your current milestones?</h2>
+            <p>You have {assignment.tasks.length} existing milestone{assignment.tasks.length === 1 ? '' : 's'}. Choose whether to keep them or replace them with a new AI plan.</p>
+            {milestoneGenerationError && <p className={styles.taskError} role="alert">{milestoneGenerationError}</p>}
+            <button type="button" className={styles.keepMilestonesButton} disabled={isGeneratingMilestones} onClick={() => void generateMilestones(true)}>
+              {isGeneratingMilestones ? 'Creating your plan...' : 'Keep mine and add missing milestones'}
+            </button>
+            <button type="button" className={styles.replaceMilestonesButton} disabled={isGeneratingMilestones} onClick={() => void generateMilestones(false)}>
+              Replace all with a new AI plan
+            </button>
+            <p className={styles.choiceNote}>Replacing permanently removes these milestones and their scheduled sessions. An active session must be stopped first.</p>
+            <button type="button" className={styles.cancelChoiceButton} disabled={isGeneratingMilestones} onClick={() => setIsMilestoneChoiceOpen(false)}>Cancel</button>
+          </section>
+        </div>
       )}
     </main>
   );

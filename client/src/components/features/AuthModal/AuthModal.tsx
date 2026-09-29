@@ -233,7 +233,7 @@ export default function AuthModal() {
                       }}
                       className={styles.switchModeBtn}
                     >
-                      Pehle account banayein (Create Account) →
+                      Create an account
                     </button>
                   )}
 
@@ -270,7 +270,7 @@ export default function AuthModal() {
                       <FiUser className={styles.inputIcon} />
                       <input
                         type="text"
-                        placeholder="Your Name"
+                        placeholder="Enter your name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         className={styles.input}
@@ -287,7 +287,7 @@ export default function AuthModal() {
                   <FiMail className={styles.inputIcon} />
                   <input
                     type="email"
-                    placeholder="abc@gmail.com"
+                    placeholder="name@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className={styles.input}
@@ -302,6 +302,7 @@ export default function AuthModal() {
                   {authMode === "login" && (
                     <Link
                       href="/forgot-password"
+                      prefetch={false}
                       onClick={handleModalClose}
                       className={styles.forgotLink}
                     >
@@ -313,7 +314,7 @@ export default function AuthModal() {
                   <FiLock className={styles.inputIcon} />
                   <input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter Password"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={styles.inputPassword}

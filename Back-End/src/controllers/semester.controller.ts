@@ -5,12 +5,12 @@ import { AppError } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
 const parseSemesterDates = (start: unknown, end: unknown) => {
-  if (typeof start !== 'string' || typeof end !== 'string') {
-    throw new AppError('Semester start and end dates are required.', 400);
+  if (typeof start !== 'string') {
+    throw new AppError('Semester start date is required.', 400);
   }
   const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || endDate <= startDate) {
+  const endDate = typeof end === 'string' && end ? new Date(end) : null;
+  if (!Number.isFinite(startDate.getTime()) || (endDate && (!Number.isFinite(endDate.getTime()) || endDate <= startDate))) {
     throw new AppError('Semester dates are invalid. The end date must follow the start date.', 400);
   }
   return { startDate, endDate };
@@ -76,7 +76,7 @@ export const updateSemester = async (req: AuthenticatedRequest, res: Response, n
     if (status !== undefined && !validStatuses.includes(status)) throw new AppError('Semester status is invalid.', 400);
 
     const dates = req.body.startDate !== undefined || req.body.endDate !== undefined
-      ? parseSemesterDates(req.body.startDate ?? existing.startDate.toISOString(), req.body.endDate ?? existing.endDate.toISOString())
+      ? parseSemesterDates(req.body.startDate ?? existing.startDate.toISOString(), req.body.endDate === undefined ? (existing.endDate?.toISOString() ?? '') : req.body.endDate)
       : undefined;
 
     const updated = await prisma.$transaction(async (tx) => {

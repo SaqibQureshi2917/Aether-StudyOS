@@ -98,6 +98,9 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
 
     const availableStudyCapacity = user.dailyGoalHours * 3; // Capacity over next 3 days
     const isScheduleAtRisk = totalRemainingHours > availableStudyCapacity;
+    const overloadMinutes = isScheduleAtRisk
+      ? Math.max(1, Math.ceil((totalRemainingHours - availableStudyCapacity) * 60 - 0.000001))
+      : 0;
 
     // 5. Fetch Weak Topics for Adaptive Recommendations
     const weakTopics = await prisma.topicMastery.findMany({
@@ -128,9 +131,10 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
         upcomingDeadlines,
         scheduleRisk: {
           isAtRisk: isScheduleAtRisk,
-          overloadHours: isScheduleAtRisk ? Math.round(totalRemainingHours - availableStudyCapacity) : 0,
+          overloadHours: overloadMinutes / 60,
+          overloadMinutes,
           message: isScheduleAtRisk
-            ? `Your current workload exceeds available study capacity by ~${Math.round(totalRemainingHours - availableStudyCapacity)} hours.`
+            ? `Your upcoming assignments need ${formatWorkloadDuration(totalRemainingHours)} of study time, but your daily goal provides ${formatWorkloadDuration(availableStudyCapacity)} over the next 3 days. You are short by ${formatWorkloadDuration(overloadMinutes / 60)}.`
             : 'Schedule is balanced.',
         },
         weakTopics,
@@ -147,4 +151,13 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
   } catch (error) {
     next(error);
   }
+};
+
+const formatWorkloadDuration = (hours: number) => {
+  const totalMinutes = Math.max(0, Math.ceil(hours * 60 - 0.000001));
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  return [wholeHours ? `${wholeHours} hour${wholeHours === 1 ? '' : 's'}` : '', remainingMinutes ? `${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}` : '']
+    .filter(Boolean)
+    .join(' ') || '0 minutes';
 };

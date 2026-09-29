@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const chat_controller_1 = require("../controllers/chat.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const chat_rate_limit_middleware_1 = require("../middleware/chat-rate-limit.middleware");
+const chat_attachment_middleware_1 = require("../middleware/chat-attachment.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.get('/threads', chat_controller_1.getConversationThreads);
+router.post('/threads', chat_controller_1.createConversation);
+router.get('/threads/:conversationId', chat_controller_1.getConversation);
+router.patch('/threads/:conversationId', chat_controller_1.renameConversation);
+router.delete('/threads/:conversationId', chat_controller_1.deleteConversation);
+router.post('/threads/:conversationId/regenerate', chat_rate_limit_middleware_1.limitChatRequests, chat_controller_1.regenerateConversationReply);
+router.post('/', chat_rate_limit_middleware_1.limitChatRequests, chat_attachment_middleware_1.chatAttachmentUpload.single('attachment'), chat_controller_1.handleChatRequest);
+exports.default = router;

@@ -43,3 +43,10 @@
         padding: 0 1.25rem;
     }
 }
+
+@media (max-width: 480px) {
+    .minimalHeader { height: 58px; padding: 0 0.85rem; }
+    .brandLogo { font-size: 1.05rem; }
+    .betaBedge { font-size: 0.62rem; }
+    .mainContent { align-items: flex-start; padding: 1rem 0.65rem; }
+}

@@ -31,14 +31,14 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
       throw new AppError('Each course name must be between 1 and 120 characters.', 400);
     }
 
-    let semesterDates: { startDate: Date; endDate: Date } | undefined;
+    let semesterDates: { startDate: Date; endDate: Date | null } | undefined;
     if (courseNames.length > 0) {
-      if (typeof semesterStartDate !== 'string' || typeof semesterEndDate !== 'string') {
-        throw new AppError('Semester start and end dates are required when adding courses.', 400);
+      if (typeof semesterStartDate !== 'string') {
+        throw new AppError('Semester start date is required when adding subjects.', 400);
       }
       const startDate = new Date(semesterStartDate);
-      const endDate = new Date(semesterEndDate);
-      if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || endDate <= startDate) {
+      const endDate = typeof semesterEndDate === 'string' && semesterEndDate ? new Date(semesterEndDate) : null;
+      if (!Number.isFinite(startDate.getTime()) || (endDate && (!Number.isFinite(endDate.getTime()) || endDate <= startDate))) {
         throw new AppError('Semester dates are invalid. The end date must follow the start date.', 400);
       }
       semesterDates = { startDate, endDate };
@@ -49,8 +49,8 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
     }
 
     const goalHours = studyGoalHours === undefined ? 3 : Number(studyGoalHours);
-    if (!Number.isFinite(goalHours) || goalHours < 0.5 || goalHours > 24) {
-      throw new AppError('Study goal must be between 0.5 and 24 hours per day.', 400);
+    if (!Number.isFinite(goalHours) || goalHours < 7 / 60 || goalHours > 24) {
+      throw new AppError('Study goal must be between 7 minutes and 24 hours per day.', 400);
     }
 
     const currentUser = await prisma.user.findUnique({
@@ -62,7 +62,7 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
       return res.status(200).json({ success: true, message: 'Onboarding is already complete.', data: { user: currentUser } });
     }
 
-    const updatedUser = await prisma.$transaction(async (tx) => {
+    const { user: updatedUser, courses: savedCourses } = await prisma.$transaction(async (tx) => {
       const user = await tx.user.update({
         where: { id: userId },
         data: {
@@ -75,6 +75,7 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
         select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, aiMode: true, isOnboarded: true },
       });
 
+      const courses: { id: string; name: string }[] = [];
       if (semesterDates && courseNames.length > 0) {
         const existingSemester = await tx.semester.findFirst({
           where: { userId, name: normalizedSemester, status: 'ACTIVE' },
@@ -89,24 +90,30 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
 
         const existingCourses = await tx.course.findMany({
           where: { semesterId: targetSemester.id },
-          select: { name: true },
+          select: { id: true, name: true },
         });
-        const knownNames = new Set(existingCourses.map((course) => course.name.trim().toLocaleLowerCase()));
-        const newCourses = courseNames.filter((name) => !knownNames.has(name.toLocaleLowerCase()));
-        if (newCourses.length > 0) {
-          await tx.course.createMany({
-            data: newCourses.map((name) => ({ semesterId: targetSemester.id, name })),
-          });
+        const coursesByName = new Map(existingCourses.map((course) => [course.name.trim().toLocaleLowerCase(), course]));
+        for (const name of courseNames) {
+          const normalizedName = name.toLocaleLowerCase();
+          let course = coursesByName.get(normalizedName);
+          if (!course) {
+            course = await tx.course.create({
+              data: { semesterId: targetSemester.id, name },
+              select: { id: true, name: true },
+            });
+            coursesByName.set(normalizedName, course);
+          }
+          courses.push(course);
         }
       }
 
-      return user;
+      return { user, courses };
     });
 
     res.status(200).json({
       success: true,
       message: 'Onboarding data saved',
-      data: { user: updatedUser },
+      data: { user: updatedUser, courses: savedCourses },
     });
   } catch (error) {
     next(error);
@@ -133,8 +140,8 @@ export const updateUserProfile = async (req: AuthenticatedRequest, res: Response
     if (normalizedMajor.length > 120 || normalizedSemester.length > 100) {
       throw new AppError('Major or semester name is too long.', 400);
     }
-    if (!Number.isFinite(goalHours) || goalHours < 0.5 || goalHours > 24) {
-      throw new AppError('Study goal must be between 0.5 and 24 hours per day.', 400);
+    if (!Number.isFinite(goalHours) || goalHours < 7 / 60 || goalHours > 24) {
+      throw new AppError('Study goal must be between 7 minutes and 24 hours per day.', 400);
     }
     if (!['balanced', 'rigorous', 'exam_prep'].includes(aiMode)) {
       throw new AppError('AI mode is invalid.', 400);

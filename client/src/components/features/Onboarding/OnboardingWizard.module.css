@@ -153,6 +153,67 @@
   gap: 0.5rem;
 }
 
+.optionalFilesGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.optionalLabel {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.optionalLabel span,
+.optionalFilesGroup small {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.pendingFileList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pendingFileList li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.pendingFileList li > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pendingFileList li > svg { flex: 0 0 auto; color: var(--brand-accent); }
+
+.pendingFileList button {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pendingFileList button:hover { background: var(--surface-card); color: #ef4444; }
+
 .fileLabelBtn {
   display: flex;
   align-items: center;
@@ -324,4 +385,23 @@
 .nextBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .wizardCard { padding: 1.35rem 1.1rem; border-radius: 14px; }
+  .stepTitle { font-size: clamp(1.25rem, 6vw, 1.5rem); }
+  .stepSubtitle { margin-bottom: 1.15rem; }
+  .addSubjectBox { padding: 0.9rem; }
+  .fileInputRow { align-items: stretch; flex-direction: column; }
+  .courseFileItem { gap: 0.6rem; padding: 0.65rem; }
+  .fileDetails { min-width: 0; gap: 0.5rem; }
+  .fileDetails > div { min-width: 0; overflow-wrap: anywhere; }
+  .footerControls { margin-top: 1.35rem; padding-top: 1rem; gap: 0.65rem; }
+  .backBtn, .nextBtn { min-height: 44px; padding: 0.65rem 0.9rem; }
+}
+
+@media (max-width: 360px) {
+  .wizardCard { padding: 1.1rem 0.85rem; }
+  .footerControls { align-items: stretch; }
+  .backBtn, .nextBtn { font-size: 0.78rem; }
 }

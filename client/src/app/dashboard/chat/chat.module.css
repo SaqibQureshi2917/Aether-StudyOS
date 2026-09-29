@@ -1,298 +1,245 @@
-.layout {
-  display: flex;
-  height: 100dvh; /* Mobile aur desktop dono ke liye modern dvh */
-  overflow: hidden;
-  background-color: var(--background);
-}
-
 .main {
-  flex: 1;
-  padding: 1rem 1.5rem; /* Balanced padding taake navbar ke sath height overflow na ho */
+  width: 100%;
+  height: calc(100dvh - var(--dashboard-header-height, 76px));
+  min-height: 420px;
+  padding: 1rem 1.25rem;
   display: flex;
-  flex-direction: column;
-  height: 100dvh;
   overflow: hidden;
-  box-sizing: border-box;
+  background: var(--background);
 }
 
 .chatContainer {
-  flex: 1;
+  width: min(100%, 1120px);
+  min-width: 0;
+  min-height: 0;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  background-color: var(--surface-card);
+  overflow: hidden;
+  background: var(--surface-card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  overflow: hidden;
-  margin-top: 0.5rem;
-  min-height: 0; /* Flex child scrolling fix */
+  box-shadow: 0 10px 34px rgba(15, 23, 42, 0.06);
 }
+
+.chatHeader {
+  min-height: 70px;
+  padding: 0.8rem 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-card);
+}
+
+.headerTitleBlock { min-width: 0; }
+.headerEyebrow { display: block; color: var(--text-muted); font-size: 0.63rem; font-weight: 800; letter-spacing: 0.12em; }
+.headerTitleBlock h1 { margin-top: 0.18rem; overflow: hidden; color: var(--text-primary); font-size: 1rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.headerActions { display: flex; align-items: center; gap: 0.45rem; flex: 0 0 auto; }
+
+.iconAction, .newConversationButton {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.iconAction { width: 40px; display: inline-grid; place-items: center; font-size: 1rem; }
+.newConversationButton { padding: 0.55rem 0.8rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; color: var(--text-primary); font-size: 0.8rem; font-weight: 700; }
+.iconAction:hover, .newConversationButton:hover { border-color: var(--brand-accent); color: var(--brand-accent); transform: translateY(-1px); }
+.dangerAction:hover { color: #dc2626; border-color: #dc2626; }
+.iconAction:focus-visible, .newConversationButton:focus-visible, .modeBtn:focus-visible, .activeModeBtn:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-accent) 38%, transparent); outline-offset: 2px; }
+
+.renameForm {
+  padding: 0.8rem 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.renameForm label { color: var(--text-secondary); font-size: 0.78rem; font-weight: 650; }
+.renameForm input { min-width: 0; flex: 1; padding: 0.58rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-card); color: var(--text-primary); font: inherit; font-size: 0.84rem; }
+.renameForm button { min-height: 38px; padding: 0.5rem 0.75rem; border: 1px solid var(--brand-accent); border-radius: 8px; background: var(--brand-accent); color: #fff; cursor: pointer; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+.renameForm button:disabled { opacity: 0.6; cursor: wait; }
+.renameForm .cancelRenameButton { border-color: var(--border); background: transparent; color: var(--text-secondary); }
 
 .modeHeader {
+  padding: 0.75rem 1.2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.85rem 1.25rem;
-  background-color: var(--surface);
+  gap: 1rem;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  background: var(--surface);
+}
+.modeSwitchGroup { padding: 0.2rem; display: flex; gap: 0.2rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-card); }
+.modeBtn, .activeModeBtn { min-height: 38px; padding: 0.45rem 0.75rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; border: 0; border-radius: 7px; cursor: pointer; font-size: 0.79rem; font-weight: 650; white-space: nowrap; }
+.modeBtn { color: var(--text-secondary); background: transparent; }
+.modeBtn:hover { color: var(--text-primary); background: var(--surface); }
+.activeModeBtn { color: #fff; background: var(--brand-accent); box-shadow: 0 2px 7px rgba(37, 99, 235, 0.2); }
+.modeDescription { color: var(--text-muted); font-size: 0.75rem; text-align: right; }
+
+.studyControls { padding: 0.65rem 1.2rem; display: flex; align-items: center; gap: 0.65rem; border-bottom: 1px solid var(--border); background: var(--surface-card); }
+.studyControls label { color: var(--text-secondary); font-size: 0.76rem; font-weight: 700; }
+.studyControls select { max-width: 230px; min-width: 140px; padding: 0.48rem 2rem 0.48rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-card); color: var(--text-primary); font-size: 0.8rem; }
+.studyControls span { color: var(--text-muted); font-size: 0.72rem; }
+.unindexedMaterials { padding: 0.55rem 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; border-bottom: 1px solid var(--border); background: var(--surface); }
+.unindexedMaterials > strong { color: var(--text-secondary); font-size: 0.7rem; }
+.unindexedMaterialRow { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.unindexedMaterialRow > span { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
+.unindexedMaterialRow button { min-height: 34px; padding: 0.4rem 0.6rem; flex: 0 0 auto; border: 1px solid var(--brand-accent); border-radius: 7px; background: var(--surface-card); color: var(--brand-accent); cursor: pointer; font-size: 0.7rem; font-weight: 700; }
+.unindexedMaterialRow button:hover:not(:disabled) { background: var(--brand-accent); color: #fff; }
+.unindexedMaterialRow button:disabled { opacity: 0.55; cursor: wait; }
+
+.messageStream { min-height: 0; flex: 1; padding: 1.25rem clamp(1rem, 5vw, 3.5rem); display: flex; flex-direction: column; gap: 1rem; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.emptyState { width: min(100%, 480px); min-height: 220px; margin: auto; padding: 2rem 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.65rem; color: var(--text-secondary); text-align: center; }
+.emptyState h2 { color: var(--text-primary); font-size: 1.15rem; }
+.emptyState p { max-width: 420px; color: var(--text-muted); font-size: 0.86rem; line-height: 1.55; }
+.emptyState > button { margin-top: 0.4rem; padding: 0.55rem 0.8rem; border: 1px solid var(--brand-accent); border-radius: 8px; background: var(--brand-accent); color: #fff; cursor: pointer; font-weight: 650; }
+.emptyIcon { width: 46px; height: 46px; margin-bottom: 0.3rem; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--brand-accent); font-size: 1.2rem; }
+
+.userMessage, .assistantMessage { width: min(100%, 820px); min-width: 0; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; gap: 0.7rem; }
+.userMessage { align-self: flex-end; border-color: color-mix(in srgb, var(--brand-accent) 28%, var(--border)); background: color-mix(in srgb, var(--brand-accent) 6%, var(--surface-card)); }
+.assistantMessage { align-self: flex-start; background: var(--surface-card); }
+.messageMeta { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; color: var(--text-muted); font-size: 0.7rem; }
+.messageMeta strong { color: var(--text-secondary); font-size: 0.74rem; }
+
+.sourceBannerGeneral, .sourceBannerGrounded, .sourceBannerInsufficient { width: fit-content; max-width: 100%; padding: 0.38rem 0.58rem; display: flex; align-items: center; gap: 0.4rem; border-radius: 7px; font-size: 0.7rem; font-weight: 700; line-height: 1.4; }
+.sourceBannerGeneral { color: var(--text-secondary); background: var(--surface); }
+.sourceBannerGrounded { color: #15803d; background: rgba(34, 197, 94, 0.12); }
+.sourceBannerInsufficient { color: #b45309; background: rgba(245, 158, 11, 0.13); }
+
+.markdownContent { min-width: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.65; overflow-wrap: anywhere; }
+.markdownParagraph { margin: 0; white-space: normal; }
+.markdownHeading { margin: 0.25rem 0 0; color: var(--text-primary); font-weight: 750; line-height: 1.3; }
+.markdownContent h1 { font-size: 1.35rem; }
+.markdownContent h2 { font-size: 1.18rem; }
+.markdownContent h3, .markdownContent h4, .markdownContent h5, .markdownContent h6 { font-size: 1rem; }
+.markdownContent a { color: var(--brand-accent); text-decoration: underline; text-underline-offset: 2px; }
+.markdownContent strong { font-weight: 750; }
+.inlineCode { padding: 0.12rem 0.35rem; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84em; }
+.codeBlock { max-width: 100%; margin: 0; padding: 0.85rem 1rem; overflow: auto; border: 1px solid var(--border); border-radius: 9px; background: #111827; color: #e5e7eb; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; line-height: 1.55; white-space: pre; }
+.codeBlock code { font: inherit; }
+.codeKeyword { color: #c4b5fd; }
+.codeString { color: #86efac; }
+.codeNumber { color: #fca5a5; }
+.codeComment { color: #94a3b8; font-style: italic; }
+.markdownList { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.markdownList li { padding-left: 0.15rem; }
+.markdownQuote { margin: 0; padding: 0.35rem 0 0.35rem 0.85rem; border-left: 3px solid var(--brand-accent); color: var(--text-secondary); }
+.tableScroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.markdownTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.markdownTable th, .markdownTable td { min-width: 100px; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.markdownTable th { background: var(--surface); color: var(--text-primary); font-weight: 700; }
+.markdownTable tr:last-child td { border-bottom: 0; }
+
+.citationBox { padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.35rem; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 0.74rem; }
+.citationBox > strong { margin-bottom: 0.1rem; color: var(--text-muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.citationItem { display: flex; gap: 0.45rem; line-height: 1.4; }
+.citationIndex { flex: 0 0 auto; color: var(--brand-accent); font-weight: 750; }
+.messageActions { display: flex; align-items: center; gap: 0.8rem; }
+.messageActions button, .retryButton { padding: 0.28rem 0; display: inline-flex; align-items: center; gap: 0.35rem; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.72rem; font-weight: 650; }
+.messageActions button:hover, .retryButton:hover { color: var(--brand-accent); }
+.messageActions button:disabled, .retryButton:disabled { opacity: 0.55; cursor: wait; }
+.fallbackButton { width: fit-content; padding: 0.55rem 0.75rem; display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--brand-accent); border-radius: 8px; background: transparent; color: var(--brand-accent); cursor: pointer; font-size: 0.78rem; font-weight: 700; }
+
+.loadingState, .thinkingState { margin: auto; display: flex; align-items: center; justify-content: center; gap: 0.6rem; color: var(--text-muted); font-size: 0.82rem; }
+.thinkingState { align-self: flex-start; margin: 0.2rem 0; }
+.loadingDot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--brand-accent); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; transform: scale(0.8); } }
+
+.chatError, .uploadNotice, .copyNotice { margin: 0 1.2rem 0.5rem; padding: 0.65rem 0.8rem; display: flex; align-items: flex-start; gap: 0.55rem; border-radius: 8px; font-size: 0.78rem; line-height: 1.45; }
+.chatError { border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); color: #b91c1c; }
+.uploadNotice { border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); color: #15803d; }
+.copyNotice { margin-bottom: 0.35rem; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
+.chatError span, .uploadNotice span { flex: 1; }
+.chatError button, .uploadNotice button { margin-left: auto; padding: 0.1rem; display: grid; place-items: center; border: 0; background: transparent; color: inherit; cursor: pointer; }
+
+.filePreview { margin: 0.6rem 1.2rem 0; padding: 0.55rem 0.65rem; display: flex; align-items: center; gap: 0.55rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--brand-accent); font-size: 0.8rem; }
+.fileName { min-width: 0; flex: 1; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.uploadButton { min-height: 36px; padding: 0.45rem 0.65rem; border: 0; border-radius: 7px; background: var(--brand-accent); color: #fff; cursor: pointer; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.uploadButton:disabled { opacity: 0.55; cursor: wait; }
+.removeFileButton { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.removeFileButton:hover { background: var(--surface-card); color: #dc2626; }
+.hiddenInput { display: none; }
+
+.inputArea { padding: 0.8rem 1.2rem 0.7rem; flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--surface); }
+.inputWrapper { min-height: 52px; padding: 0.35rem 0.4rem 0.35rem 0.55rem; display: flex; align-items: flex-end; gap: 0.45rem; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-card); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.inputWrapper:focus-within { border-color: var(--brand-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent) 12%, transparent); }
+.inputWrapper textarea { min-width: 0; min-height: 38px; max-height: 150px; padding: 0.55rem 0.4rem; flex: 1; resize: vertical; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 0.88rem; line-height: 1.45; }
+.inputWrapper textarea::placeholder { color: var(--text-muted); }
+.attachBtn { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 1.15rem; }
+.attachBtn:hover { background: var(--surface); color: var(--brand-accent); }
+.attachBtn:disabled { opacity: 0.5; cursor: wait; }
+.sendBtn { min-height: 40px; padding: 0.55rem 0.85rem; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border: 0; border-radius: 9px; background: var(--brand-accent); color: #fff; cursor: pointer; font-size: 0.8rem; font-weight: 700; transition: filter 150ms ease, transform 150ms ease; }
+.sendBtn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.sendBtn:disabled { opacity: 0.55; cursor: not-allowed; }
+.inputHint { margin: 0.45rem 0.15rem 0; color: var(--text-muted); font-size: 0.68rem; line-height: 1.4; }
+
+.dialogOverlay { position: fixed; inset: 0; z-index: 3100; padding: 1rem; display: grid; place-items: center; overflow-y: auto; background: rgba(15, 23, 42, 0.62); backdrop-filter: blur(4px); }
+.deleteDialog { position: relative; width: min(100%, 430px); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.8rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-card); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28); }
+.dialogClose { position: absolute; top: 0.8rem; right: 0.8rem; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.dialogIcon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+.deleteDialog h2 { padding-right: 1.8rem; color: var(--text-primary); font-size: 1.1rem; }
+.deleteDialog p { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; }
+.dialogActions { margin-top: 0.4rem; display: flex; justify-content: flex-end; gap: 0.6rem; }
+.dialogActions button { min-height: 42px; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.78rem; font-weight: 700; }
+.dialogActions .confirmDeleteButton { border-color: #dc2626; background: #dc2626; color: #fff; }
+.dialogActions button:disabled { opacity: 0.55; cursor: wait; }
+
+@media (max-width: 768px) {
+  .main { padding: 0.65rem; }
+  .chatContainer { border-radius: 12px; }
+  .messageStream { padding: 1rem 0.8rem; }
+  .chatHeader { min-height: 62px; padding: 0.65rem 0.8rem; }
+  .modeHeader { padding: 0.65rem 0.8rem; }
+  .studyControls { padding: 0.55rem 0.8rem; flex-wrap: wrap; }
+  .unindexedMaterials { padding-inline: 0.8rem; }
+  .inputArea { padding: 0.65rem 0.75rem; }
+  .chatError, .uploadNotice, .copyNotice { margin-inline: 0.75rem; }
+  .filePreview { margin-inline: 0.75rem; }
 }
 
-.modeSwitchGroup {
-  display: flex;
-  background-color: var(--surface-card);
-  padding: 0.25rem;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  gap: 0.25rem;
+@media (max-width: 540px) {
+  .main { min-height: 360px; padding: 0; }
+  .chatContainer { border-right: 0; border-left: 0; border-radius: 0; }
+  .chatHeader { min-height: 58px; gap: 0.5rem; }
+  .headerEyebrow { font-size: 0.56rem; }
+  .headerTitleBlock h1 { max-width: 46vw; font-size: 0.9rem; }
+  .headerActions { gap: 0.3rem; }
+  .iconAction { width: 36px; min-height: 36px; }
+  .newConversationButton { min-height: 36px; padding-inline: 0.55rem; font-size: 0.72rem; }
+  .modeHeader { align-items: flex-start; flex-direction: column; gap: 0.45rem; }
+  .modeSwitchGroup { width: 100%; }
+  .modeBtn, .activeModeBtn { min-width: 0; flex: 1; padding-inline: 0.4rem; font-size: 0.72rem; }
+  .modeDescription { text-align: left; font-size: 0.69rem; }
+  .studyControls { gap: 0.45rem; }
+  .studyControls select { max-width: none; flex: 1; }
+  .studyControls span { flex-basis: 100%; }
+  .userMessage, .assistantMessage { padding: 0.8rem; border-radius: 11px; }
+  .markdownContent { font-size: 0.84rem; }
+  .renameForm { padding: 0.65rem 0.75rem; flex-wrap: wrap; }
+  .renameForm label { flex-basis: 100%; }
+  .renameForm input { flex-basis: 100%; }
+  .inputWrapper { min-height: 48px; gap: 0.25rem; }
+  .inputWrapper textarea { font-size: 0.84rem; }
+  .sendBtn { min-height: 38px; padding-inline: 0.65rem; }
+  .filePreview { gap: 0.35rem; }
+  .uploadButton { padding-inline: 0.5rem; font-size: 0.68rem; }
+  .dialogActions { flex-direction: column-reverse; }
+  .dialogActions button { width: 100%; }
 }
 
-.modeBtn, .activeModeBtn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.modeBtn {
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.activeModeBtn {
-  background-color: var(--brand-accent);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
-}
-
-.messageStream {
-  flex: 1;
-  padding: 1.25rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  min-height: 0;
-}
-
-.filePreviewBanner {
-  padding: 0.5rem 1rem;
-  background-color: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--brand-accent);
-  flex-shrink: 0;
-}
-
-.removeFileBtn {
-  background: none;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.userBubble, .assistantBubble {
-  max-width: 80%;
-  padding: 1rem 1.25rem;
-  border-radius: 14px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.userBubble {
-  align-self: flex-end;
-  background-color: var(--brand-accent);
-  color: #ffffff;
-}
-
-.assistantBubble {
-  align-self: flex-start;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-}
-
-.sourceBannerGeneral, .sourceBannerGrounded, .sourceBannerInsufficient {
-  font-size: 0.75rem;
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.sourceBannerGeneral {
-  background-color: rgba(148, 163, 184, 0.1);
-  color: var(--text-muted);
-}
-
-.sourceBannerGrounded {
-  background-color: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-}
-
-.sourceBannerInsufficient {
-  background-color: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-
-.citationBox {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.citationTitle {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.citationTag {
-  font-size: 0.75rem;
-  color: var(--brand-accent);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.fallbackBtn {
-  align-self: flex-start;
-  background-color: var(--surface);
-  border: 1px solid var(--brand-accent);
-  color: var(--brand-accent);
-  padding: 0.5rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 0.4rem;
-}
-
-.inputArea {
-  padding: 0.85rem 1.25rem;
-  background-color: var(--surface);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.inputWrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background-color: var(--surface-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 0.35rem 0.75rem;
-  gap: 0.5rem;
-  transition: border-color 0.2s ease;
-}
-
-.inputWrapper:focus-within {
-  border-color: var(--brand-accent);
-}
-
-.attachContainer {
-  position: relative;
-}
-
-.attachBtn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  border-radius: 8px;
-  transition: color 0.2s ease;
-}
-
-.attachBtn:hover {
-  color: var(--text-primary);
-}
-
-.attachMenu {
-  position: absolute;
-  bottom: 120%;
-  left: 0;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  display: flex;
-  flex-direction: column;
-  padding: 0.4rem;
-  gap: 0.2rem;
-  min-width: 150px;
-  z-index: 100;
-}
-
-.menuItem {
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: background 0.2s;
-}
-
-.menuItem:hover {
-  background-color: var(--surface-card);
-  color: var(--brand-accent);
-}
-
-.hiddenInput {
-  display: none !important;
-}
-
-.textInput {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  padding: 0.5rem;
-}
-
-.sendBtn {
-  background-color: var(--brand-accent);
-  color: #ffffff;
-  border: none;
-  padding: 0.55rem 1rem;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  transition: opacity 0.2s;
-}
-
-.sendBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+@media (max-width: 360px) {
+  .headerTitleBlock h1 { max-width: 39vw; }
+  .newConversationButton span { display: none; }
+  .newConversationButton { width: 36px; padding: 0; }
+  .modeBtn, .activeModeBtn { font-size: 0.67rem; }
+  .messageStream { padding-inline: 0.6rem; }
+  .uploadButton { max-width: 96px; white-space: normal; }
 }

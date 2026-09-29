@@ -1,0 +1,1 @@
+ALTER TABLE "Semester" ALTER COLUMN "endDate" DROP NOT NULL;

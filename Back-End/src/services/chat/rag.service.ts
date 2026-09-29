@@ -1,8 +1,5 @@
-// backend/src/services/chat/rag.service.ts
-
-import { PrismaClient, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../config/db';
 
 export interface RetrievedChunk {
   chunkId: string;
@@ -14,92 +11,65 @@ export interface RetrievedChunk {
   similarity: number;
 }
 
+const EMBEDDING_DIMENSIONS = 1536;
+const MIN_SIMILARITY = 0.68;
+
 export class RAGService {
-  /**
-   * Performs vector similarity search over DocumentChunks scoped strictly to the user.
-   * Enforces tenant/user isolation at the database layer.
-   */
-  public static async retrieveRelevantChunks(
+  static async retrieveRelevantChunks(
     userId: string,
     queryEmbedding: number[],
     courseId?: string,
-    topK: number = 5,
-    similarityThreshold: number = 0.7
+    topK = 5,
   ): Promise<RetrievedChunk[]> {
+    if (queryEmbedding.length !== EMBEDDING_DIMENSIONS || queryEmbedding.some((value) => !Number.isFinite(value))) {
+      throw new Error('The question embedding does not match the configured vector dimensions.');
+    }
+
+    const embeddingString = `[${queryEmbedding.join(',')}]`;
+    const courseFilter = courseId ? Prisma.sql`AND cm."courseId" = ${courseId}` : Prisma.empty;
+    const take = Math.min(10, Math.max(1, Math.floor(topK)));
+
     try {
-      const embeddingString = `[${queryEmbedding.join(',')}]`;
+      const rows = await prisma.$queryRaw<Array<{
+        id: string;
+        materialId: string;
+        title: string;
+        courseId: string;
+        content: string;
+        pageNumber: number | null;
+        similarity: number;
+      }>>`
+        SELECT dc.id,
+               dc."materialId",
+               cm.title,
+               cm."courseId",
+               dc.content,
+               dc."pageNumber",
+               1 - (dc.embedding <=> ${embeddingString}::vector) AS similarity
+        FROM "DocumentChunk" dc
+        JOIN "CourseMaterial" cm ON cm.id = dc."materialId"
+        JOIN "Course" c ON c.id = cm."courseId"
+        JOIN "Semester" s ON s.id = c."semesterId"
+        WHERE s."userId" = ${userId}
+          AND cm."isIndexed" = true
+          AND dc.embedding IS NOT NULL
+          ${courseFilter}
+          AND 1 - (dc.embedding <=> ${embeddingString}::vector) >= ${MIN_SIMILARITY}
+        ORDER BY dc.embedding <=> ${embeddingString}::vector ASC
+        LIMIT ${take}
+      `;
 
-      // Using Prisma.sql helper or conditional execution to safely handle optional courseId
-      let chunks;
-      if (courseId) {
-        chunks = await prisma.$queryRaw<Array<{
-          id: string;
-          materialId: string;
-          title: string;
-          courseId: string;
-          content: string;
-          pageNumber: number | null;
-          similarity: number;
-        }>>`
-          SELECT 
-            dc.id,
-            dc."materialId",
-            cm.title,
-            cm."courseId",
-            dc.content,
-            dc."pageNumber",
-            1 - (dc.embedding <=> ${embeddingString}::vector) AS similarity
-          FROM "DocumentChunk" dc
-          JOIN "CourseMaterial" cm ON dc."materialId" = cm.id
-          JOIN "Course" c ON cm."courseId" = c.id
-          JOIN "Semester" s ON c."semesterId" = s.id
-          WHERE s."userId" = ${userId}
-          AND cm."courseId" = ${courseId}
-          AND (1 - (dc.embedding <=> ${embeddingString}::vector)) >= ${similarityThreshold}
-          ORDER BY similarity DESC
-          LIMIT ${topK};
-        `;
-      } else {
-        chunks = await prisma.$queryRaw<Array<{
-          id: string;
-          materialId: string;
-          title: string;
-          courseId: string;
-          content: string;
-          pageNumber: number | null;
-          similarity: number;
-        }>>`
-          SELECT 
-            dc.id,
-            dc."materialId",
-            cm.title,
-            cm."courseId",
-            dc.content,
-            dc."pageNumber",
-            1 - (dc.embedding <=> ${embeddingString}::vector) AS similarity
-          FROM "DocumentChunk" dc
-          JOIN "CourseMaterial" cm ON dc."materialId" = cm.id
-          JOIN "Course" c ON cm."courseId" = c.id
-          JOIN "Semester" s ON c."semesterId" = s.id
-          WHERE s."userId" = ${userId}
-          AND (1 - (dc.embedding <=> ${embeddingString}::vector)) >= ${similarityThreshold}
-          ORDER BY similarity DESC
-          LIMIT ${topK};
-        `;
-      }
-
-      return chunks.map(chunk => ({
-        chunkId: chunk.id,
-        documentId: chunk.materialId,
-        fileName: chunk.title,
-        courseId: chunk.courseId,
-        content: chunk.content,
-        pageNumber: chunk.pageNumber,
-        similarity: chunk.similarity,
+      return rows.map((row) => ({
+        chunkId: row.id,
+        documentId: row.materialId,
+        fileName: row.title,
+        courseId: row.courseId,
+        content: row.content,
+        pageNumber: row.pageNumber,
+        similarity: Number(row.similarity),
       }));
-    } catch (error) {
-      console.error('[RAGService] Error retrieving chunks:', error);
-      throw new Error('Failed to perform source-grounded document retrieval.');
+    } catch {
+      throw new Error('StudyOS Tutor could not search indexed course materials.');
     }
   }
 }

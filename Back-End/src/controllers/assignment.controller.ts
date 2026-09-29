@@ -2,6 +2,8 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
 import{ AppError} from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { aiAdapter } from '../services/ai/ai.service';
+import { z } from 'zod';
 
 // 1. Create Assignment
 export const createAssignment = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -158,14 +160,31 @@ export const addAssignmentTask = async (req: AuthenticatedRequest, res: Response
       throw new AppError('Milestone hours must be greater than 0 and at most 1000.', 400);
     }
 
-    const task = await prisma.studyTask.create({
-      data: {
-        courseId: assignment.courseId,
-        assignmentId: id,
-        title: title.trim(),
-        deadline: assignment.deadline,
-        estimatedHours: parsedHours,
-      },
+    const task = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Assignment" WHERE "id" = ${id} FOR UPDATE`;
+      const existingTasks = await tx.studyTask.findMany({
+        where: { assignmentId: id },
+        select: { estimatedHours: true },
+      });
+      const alreadyAllocatedHours = existingTasks.reduce((total, item) => total + item.estimatedHours, 0);
+      if (alreadyAllocatedHours + parsedHours > assignment.estimatedHours + 0.000001) {
+        const remainingMinutes = Math.max(0, Math.floor((assignment.estimatedHours - alreadyAllocatedHours) * 60 + 0.000001));
+        const requestedMinutes = Math.ceil(parsedHours * 60 - 0.000001);
+        const assignmentMinutes = Math.round(assignment.estimatedHours * 60);
+        throw new AppError(
+          `This milestone is set to ${requestedMinutes} minutes, but only ${remainingMinutes} minutes remain in the assignment's ${assignmentMinutes}-minute time budget. Reduce the milestone time to fit.`,
+          400,
+        );
+      }
+      return tx.studyTask.create({
+        data: {
+          courseId: assignment.courseId,
+          assignmentId: id,
+          title: title.trim(),
+          deadline: assignment.deadline,
+          estimatedHours: parsedHours,
+        },
+      });
     });
 
     res.status(201).json({
@@ -178,45 +197,118 @@ export const addAssignmentTask = async (req: AuthenticatedRequest, res: Response
   }
 };
 
-// Replace the generated milestone set atomically. Row locking makes concurrent
-// regenerate requests serialize instead of leaving duplicate sets behind.
+const MilestonePlanSchema = z.object({
+  milestones: z.array(z.object({ title: z.string().trim().min(4).max(160) })),
+});
+
+// Generate assignment-specific milestones and preserve existing work unless the user chooses replacement.
 export const regenerateAssignmentTasks = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
     const { id } = req.params;
     if (!userId) throw new AppError('Unauthorized access', 401);
 
+    const preserveExisting = req.body?.preserveExisting !== false;
     const assignment = await prisma.assignment.findFirst({
       where: { id, course: { semester: { userId } } },
-      select: { id: true, courseId: true, deadline: true },
+      select: { id: true, courseId: true, deadline: true, estimatedHours: true, title: true, description: true, course: { select: { name: true } } },
     });
     if (!assignment) throw new AppError('Assignment not found', 404);
 
-    const titles = [
-      'Understand Requirements & Specs',
-      'Dataset / Resource Preparation',
-      'Core Implementation / Architecture',
-      'Testing, Evaluation & Report Writing',
-    ];
-    const tasks = await prisma.$transaction(async (tx) => {
+    const existingTasks = await prisma.studyTask.findMany({
+      where: { assignmentId: id },
+      select: { id: true, title: true, estimatedHours: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const targetCount = 4;
+    const milestoneCount = preserveExisting ? Math.max(0, targetCount - existingTasks.length) : targetCount;
+    if (milestoneCount === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'You already have four or more milestones. Choose replacement to create a new AI plan.',
+        data: { tasks: [], addedCount: 0 },
+      });
+    }
+
+    const alreadyAllocatedHours = preserveExisting ? existingTasks.reduce((total, task) => total + task.estimatedHours, 0) : 0;
+    const remainingHours = Math.max(0, assignment.estimatedHours - alreadyAllocatedHours);
+    const remainingMinutes = Math.floor(remainingHours * 60 + 0.000001);
+    if (remainingMinutes < milestoneCount) {
+      throw new AppError(
+        `There is not enough unallocated time for ${milestoneCount} more milestones. Only ${remainingMinutes} minutes remain. Increase the assignment time or reduce the time assigned to existing milestones.`,
+        400,
+      );
+    }
+
+    const prompt = `Create exactly ${milestoneCount} new study milestones for this assignment. Each milestone must be specific to the assignment and form a useful next step. Do not use generic phase names. Return JSON only in this shape: {"milestones":[{"title":"..."}]}.\n\nAssignment: ${assignment.title}\nSubject: ${assignment.course.name}\nDescription: ${(assignment.description || 'No description provided.').slice(0, 2500)}\nTotal study time: ${assignment.estimatedHours} hours\nTime remaining for new milestones: ${remainingMinutes} minutes\nExisting milestones to preserve and avoid duplicating: ${preserveExisting ? existingTasks.map((task) => task.title).join('; ') || 'None' : 'The user chose to replace these: ' + existingTasks.map((task) => task.title).join('; ')}`;
+    const aiResponse = await aiAdapter.generateText({
+      prompt,
+      systemPrompt: 'You are an academic assignment planning assistant. Break the specific assignment into concise, actionable study milestones. Use only the assignment details provided. Return valid JSON matching the requested structure and exactly the requested number of unique milestone titles.',
+      temperature: 0.3,
+      maxTokens: 1000,
+      responseFormat: 'json_object',
+    });
+
+    let proposedMilestones: z.infer<typeof MilestonePlanSchema>;
+    try {
+      proposedMilestones = MilestonePlanSchema.parse(JSON.parse(aiResponse));
+    } catch {
+      throw new AppError('The AI could not create a clear milestone plan. Please try again.', 502);
+    }
+    const titles = [...new Set(proposedMilestones.milestones.map((milestone) => milestone.title))];
+    const existingTitleSet = new Set((preserveExisting ? existingTasks : []).map((task) => task.title.trim().toLocaleLowerCase()));
+    if (titles.length !== milestoneCount || titles.some((title) => existingTitleSet.has(title.trim().toLocaleLowerCase()))) {
+      throw new AppError('The AI could not create the requested number of unique milestones. Please try again.', 502);
+    }
+
+    const generated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Assignment" WHERE "id" = ${id} FOR UPDATE`;
+      const currentTasks = await tx.studyTask.findMany({
+        where: { assignmentId: id },
+        select: { id: true, estimatedHours: true },
+      });
+      const expectedIds = new Set(existingTasks.map((task) => task.id));
+      if (currentTasks.length !== existingTasks.length || currentTasks.some((task) => !expectedIds.has(task.id))) {
+        throw new AppError('This assignment changed while the AI was planning. Refresh the page and try again.', 409);
+      }
+
       const activeSession = await tx.studySession.findFirst({
         where: { task: { assignmentId: id }, status: 'IN_PROGRESS' },
         select: { id: true },
       });
-      if (activeSession) throw new AppError('Finish or stop the active study session before regenerating milestones.', 409);
-      await tx.studyTask.deleteMany({ where: { assignmentId: id } });
+      if (!preserveExisting && activeSession) {
+        throw new AppError('Stop the active study session before replacing these milestones.', 409);
+      }
+
+      const currentAllocatedHours = preserveExisting ? currentTasks.reduce((total, task) => total + task.estimatedHours, 0) : 0;
+      const currentRemainingHours = assignment.estimatedHours - currentAllocatedHours;
+      if (currentRemainingHours * 60 + 0.000001 < milestoneCount) {
+        throw new AppError('The available assignment time changed. Refresh the page and review the remaining time.', 409);
+      }
+
+      if (!preserveExisting) await tx.studyTask.deleteMany({ where: { assignmentId: id } });
+      const estimatedHoursPerMilestone = currentRemainingHours / milestoneCount;
       const created = [];
       for (const title of titles) {
         created.push(await tx.studyTask.create({
-          data: { courseId: assignment.courseId, assignmentId: id, title, deadline: assignment.deadline, estimatedHours: 1 },
+          data: {
+            courseId: assignment.courseId,
+            assignmentId: id,
+            title,
+            deadline: assignment.deadline,
+            estimatedHours: estimatedHoursPerMilestone,
+          },
         }));
       }
       await tx.assignment.update({ where: { id }, data: { status: 'PENDING' } });
       return created;
     });
 
-    res.status(200).json({ success: true, message: 'Milestones regenerated successfully', data: { tasks } });
+    res.status(200).json({
+      success: true,
+      message: preserveExisting ? 'AI milestones added while keeping your existing milestones.' : 'Existing milestones replaced with a new AI plan.',
+      data: { tasks: generated, addedCount: generated.length },
+    });
   } catch (error) {
     next(error);
   }

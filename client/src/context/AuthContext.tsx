@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, clearApiResponseCache } from '@/lib/apiClient';
 
 type AuthMode = 'login' | 'signup';
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
@@ -44,6 +44,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authError, setAuthError] = useState('');
 
   const clearAuthentication = useCallback(() => {
+    clearApiResponseCache();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('studyos_token');
       localStorage.removeItem('token');

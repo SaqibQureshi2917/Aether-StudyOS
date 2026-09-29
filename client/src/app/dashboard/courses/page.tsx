@@ -1,9 +1,9 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
 
-type Semester = { id: string; name: string; startDate: string; endDate: string; status: 'ACTIVE' | 'COMPLETED' | 'PLANNED'; _count?: { courses: number } };
+type Semester = { id: string; name: string; startDate: string; endDate: string | null; status: 'ACTIVE' | 'COMPLETED' | 'PLANNED'; _count?: { courses: number } };
 type Course = { id: string; name: string; code: string | null; creditHours: number; difficulty: number; priority: number; semesterId: string; semester?: { name: string } };
 
 export default function CoursesPage() {
@@ -22,6 +22,10 @@ export default function CoursesPage() {
   const load = useCallback(async () => {
     setError('');
     try {
+      const cachedSemesters = getCachedApiResponse<{ data?: { semesters?: Semester[] } }>('/semesters')?.data?.semesters;
+      const cachedCourses = getCachedApiResponse<{ data?: { courses?: Course[] } }>('/courses')?.data?.courses;
+      if (cachedSemesters) setSemesters(cachedSemesters);
+      if (cachedCourses) setCourses(cachedCourses);
       const [semesterResponse, courseResponse]: any[] = await Promise.all([
         apiRequest('/semesters', 'GET'), apiRequest('/courses', 'GET'),
       ]);
@@ -94,7 +98,7 @@ export default function CoursesPage() {
       {semesters.length === 0 && <p>No semesters yet. Create one to add courses.</p>}
       <ul style={{ padding: 0, listStyle: 'none' }}>
         {semesters.map((semester) => <li key={semester.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #ddd' }}>
-          <strong>{semester.name}</strong><span>{new Date(semester.startDate).toLocaleDateString()} – {new Date(semester.endDate).toLocaleDateString()}</span>
+          <strong>{semester.name}</strong><span>{new Date(semester.startDate).toLocaleDateString()} – {semester.endDate ? new Date(semester.endDate).toLocaleDateString() : 'Estimated end: 6 months after start'}</span>
           <span>{semester.status} · {semester._count?.courses ?? courses.filter((c) => c.semesterId === semester.id).length} courses</span>
           {semester.status !== 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void updateStatus(semester, 'ACTIVE')}>Make active</button>}
           {semester.status === 'ACTIVE' && <button type="button" disabled={busy} onClick={() => void updateStatus(semester, 'COMPLETED')}>Complete</button>}
@@ -102,22 +106,22 @@ export default function CoursesPage() {
         </li>)}
       </ul>
       <form onSubmit={createSemester} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
-        <input aria-label="Semester name" placeholder="e.g. Fall 2026" required maxLength={100} value={semesterName} onChange={(e) => setSemesterName(e.target.value)} />
+        <input aria-label="Semester name" placeholder="Enter semester name" required maxLength={100} value={semesterName} onChange={(e) => setSemesterName(e.target.value)} />
         <label>Starts <input aria-label="Semester start date" type="date" required value={semesterStart} onChange={(e) => setSemesterStart(e.target.value)} /></label>
-        <label>Ends <input aria-label="Semester end date" type="date" required value={semesterEnd} onChange={(e) => setSemesterEnd(e.target.value)} /></label>
-        <button disabled={busy || !semesterName || !semesterStart || !semesterEnd}>Add semester</button>
+        <label>Ends (optional) <input aria-label="Semester end date (optional)" type="date" value={semesterEnd} onChange={(e) => setSemesterEnd(e.target.value)} /></label>
+        <button disabled={busy || !semesterName || !semesterStart}>Add semester</button>
       </form>
     </section>
 
     <section aria-labelledby="courses-heading" style={{ marginTop: 40 }}>
-      <h2 id="courses-heading">Courses</h2>
+      <h2 id="courses-heading">Subjects</h2>
       <form onSubmit={createCourse} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '16px 0' }}>
-        <select aria-label="Course semester" required value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
+        <select aria-label="Subject semester" required value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
           <option value="">Select semester</option>{semesters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <input aria-label="Course name" placeholder="Course name" required maxLength={120} value={courseName} onChange={(e) => setCourseName(e.target.value)} />
-        <input aria-label="Course code" placeholder="Course code (optional)" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
-        <button disabled={busy || !semesterId || !courseName}>Add course</button>
+        <input aria-label="Subject name" placeholder="Enter subject name" required maxLength={120} value={courseName} onChange={(e) => setCourseName(e.target.value)} />
+        <input aria-label="Course code" placeholder="Enter course code (optional)" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
+        <button disabled={busy || !semesterId || !courseName}>Add subject</button>
       </form>
       {courses.length === 0 ? <p>No courses yet.</p> : <ul style={{ padding: 0, listStyle: 'none' }}>
         {courses.map((course) => <li key={course.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #ddd' }}>

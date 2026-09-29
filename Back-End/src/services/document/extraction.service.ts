@@ -11,7 +11,7 @@ export class DocumentExtractionService {
     documentId: string,
     extractedText: string
   ): Promise<AssignmentExtractionDTO | null> {
-    const systemPrompt = `You are an academic document intelligence engine. Analyze the provided syllabus or assignment sheet text and extract assignment details. 
+    const systemPrompt = `You are an academic document intelligence engine. Analyze the provided academic document and extract an assignment only when the text clearly describes a student deliverable with an assignment title or task. Do not treat quizzes, exams, general lecture notes, or course descriptions as assignments. If no assignment is clearly present, return exactly {"type":"none"}.
     CRITICAL RULE: AI must NEVER invent a deadline. If no explicit deadline is found in the text, set "deadline" strictly to null. 
     Return a valid JSON object matching this structure:
     {
@@ -34,17 +34,16 @@ export class DocumentExtractionService {
       });
 
       const parsedJson = JSON.parse(response);
+      if (parsedJson?.type !== 'assignment') return null;
       
       // Validate with Zod schema before trusting
       const validationResult = AssignmentExtractionSchema.safeParse(parsedJson);
       if (!validationResult.success) {
-        console.error('[DocumentExtractionService] Assignment validation failed:', validationResult.error);
         return null;
       }
 
       return validationResult.data;
-    } catch (error) {
-      console.error('[DocumentExtractionService] Extraction error:', error);
+    } catch {
       return null;
     }
   }

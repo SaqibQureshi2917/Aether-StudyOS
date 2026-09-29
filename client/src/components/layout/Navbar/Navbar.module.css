@@ -98,7 +98,8 @@
     position: fixed;
     top: 72px;
     left: 0;
-    width: 100vw;
+    right: 0;
+    width: auto;
     height: calc(100vh - 72px);
     background-color: var(--background);
     z-index: 1001;

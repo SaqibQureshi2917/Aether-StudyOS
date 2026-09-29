@@ -72,9 +72,6 @@ export class ReschedulingEngine {
         remainingMinutes -= minutesToAllocate;
       }
 
-      if (remainingMinutes > 0) {
-        console.warn(`[ReschedulingEngine] Critical Warning: Could not fully recover task "${task.title}". Unallocated: ${remainingMinutes / 60} hours before deadline.`);
-      }
     }
 
     return rescheduledSessions;

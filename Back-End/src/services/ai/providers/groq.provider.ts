@@ -1,6 +1,6 @@
 // backend/src/services/ai/providers/groq.provider.ts
 
-import { AIProvider, GenerateTextOptions } from '../ai-provider.interface';
+import { AIProvider, AIProviderError, GenerateTextOptions } from '../ai-provider.interface';
 
 export class GroqProvider implements AIProvider {
   public name = 'GROQ';
@@ -13,8 +13,8 @@ export class GroqProvider implements AIProvider {
   }
 
   public async generateText(options: GenerateTextOptions): Promise<string> {
-    // Production implementation for Groq API call
-    // Using fetch or official SDK with proper error handling and rate-limit tracking
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -23,33 +23,39 @@ export class GroqProvider implements AIProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.model,
+          model: options.images?.length ? 'qwen/qwen3.8-27b' : this.model,
           messages: [
             ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
-            { role: 'user', content: options.prompt },
+            { role: 'user', content: options.images?.length ? [
+              { type: 'text', text: options.prompt },
+              ...options.images.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } })),
+            ] : options.prompt },
           ],
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 1024,
+          max_completion_tokens: options.maxTokens ?? 1024,
           response_format: options.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Groq API Error (${response.status}): ${errorData}`);
+        throw new AIProviderError(`Groq request failed with status ${response.status}.`, response.status === 408 || response.status === 429 || response.status >= 500, response.status);
       }
 
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || '';
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== 'string' || !content.trim()) throw new AIProviderError('Groq returned an empty response.', true);
+      return content;
     } catch (error) {
-      console.error('[GroqProvider] Generation failed:', error);
-      throw error;
+      if (error instanceof AIProviderError) throw error;
+      throw new AIProviderError(controller.signal.aborted ? 'Groq request timed out.' : 'Groq could not be reached.', true);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   public async generateEmbedding(text: string): Promise<number[]> {
-    // Groq usually requires an embedding-specific model or external provider like Gemini/OpenAI
-    // Here we can throw or delegate to embedding provider
-    throw new Error('Groq embedding provider not natively configured; use Gemini or dedicated embedding service.');
+    void text;
+    throw new AIProviderError('Groq embeddings are not configured.', false);
   }
 }

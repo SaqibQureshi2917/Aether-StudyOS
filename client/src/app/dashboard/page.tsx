@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
 import { 
   FiBook, 
   FiArrowRight, 
@@ -50,6 +50,7 @@ interface DashboardData {
   scheduleRisk: {
     isAtRisk: boolean;
     overloadHours: number;
+    overloadMinutes: number;
     message: string;
   };
   weakTopics: Array<{
@@ -73,9 +74,20 @@ export default function DashboardPage() {
   const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
 
+  const formatDailyGoal = (hours: number) => {
+    const totalMinutes = Math.round(hours * 60);
+    const wholeHours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+
+    if (wholeHours === 0) return `${totalMinutes} min/day`;
+    return `${wholeHours} hr${wholeHours === 1 ? '' : 's'}${remainingMinutes ? ` ${remainingMinutes} min` : ''}/day`;
+  };
+
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
+      const cached = getCachedApiResponse<{ data?: DashboardData }>('/dashboard/overview')?.data;
+      if (cached) setData(cached);
+      if (!cached && !data) setLoading(true);
       setLoadError('');
       const res: any = await apiRequest('/dashboard/overview', 'GET');
       if (res.data) {
@@ -84,7 +96,6 @@ export default function DashboardPage() {
         setLoadError('Dashboard data is unavailable right now. Please try again.');
       }
     } catch (err) {
-      console.warn('Dashboard request failed:', err);
       setLoadError('Could not load your dashboard. Please try again.');
     } finally {
       setLoading(false);
@@ -97,7 +108,6 @@ export default function DashboardPage() {
       await apiRequest('/sessions/start', 'POST', { sessionId });
       await fetchDashboardData();
     } catch (err) {
-      console.error('Could not start study session:', err);
       setLoadError('Could not start this study session. Please try again.');
     } finally {
       setUpdatingSessionId(null);
@@ -120,7 +130,6 @@ export default function DashboardPage() {
       await apiRequest('/sessions/complete', 'POST', { sessionId });
       await fetchDashboardData();
     } catch (err) {
-      console.error('Could not complete study session:', err);
       setLoadError('Could not complete this study session. Please try again.');
     } finally {
       setUpdatingSessionId(null);
@@ -135,7 +144,7 @@ export default function DashboardPage() {
           <div className={styles.riskAlertBox}>
             <FiAlertTriangle className={styles.riskIcon} />
             <div className={styles.riskText}>
-              <h4>Schedule Capacity Overload Risk!</h4>
+              <h4>Your upcoming workload needs attention</h4>
               <p>{data.scheduleRisk.message}</p>
             </div>
             <Link href="/dashboard/planner" className={styles.riskBtn}>
@@ -150,7 +159,7 @@ export default function DashboardPage() {
             <FiClock className={styles.statIcon} />
             <div>
               <span className={styles.statNumber}>
-                {data?.user?.dailyGoalHours ?? '—'} Hours/Day
+                {data?.user?.dailyGoalHours != null ? formatDailyGoal(data.user.dailyGoalHours) : '—'}
               </span>
               <span className={styles.statLabel}>Daily Target</span>
             </div>

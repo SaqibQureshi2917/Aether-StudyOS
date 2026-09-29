@@ -16,10 +16,17 @@ export interface ChatRequestDTO {
   conversationId?: string;
   mode: ChatMode;
   courseId?: string;
+  attachment?: {
+    fileName: string;
+    mimeType: string;
+    text?: string;
+    imageData?: string;
+  };
 }
 
 export interface ChatResponseDTO {
   conversationId: string;
+  userMessageId: string;
   messageId: string;
   mode: ChatMode;
   answer: string;
@@ -27,7 +34,8 @@ export interface ChatResponseDTO {
   citations: Citation[];
   usage: {
     used: number;
-    limit: number;
+    limit: number | null;
   };
   providerUsed: string;
+  createdAt: Date;
 }

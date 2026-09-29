@@ -1,95 +1,126 @@
-import { Response } from 'express';
-import { AuthenticatedRequest } from '../middleware/auth.middleware'; 
-import { aiAdapter } from '../services/ai/ai.service';
-import { RAGService } from '../services/chat/rag.service';
+import { Response, NextFunction } from 'express';
+import { prisma } from '../config/db';
+import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { AppError } from '../middleware/error.middleware';
+import { AIProviderError } from '../services/ai/ai-provider.interface';
+import { processChatMessage } from '../services/chat/chat.service';
+import { parseChatAttachment } from '../services/chat/chat-attachment.service';
+import { chatSchema, renameConversationSchema } from '../validations/chat.validation';
 
-export async function handleChatRequest(req: AuthenticatedRequest, res: Response): Promise<Response> {
+function requireUserId(req: AuthenticatedRequest) {
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError('Your session has expired. Sign in and try again.', 401);
+  return userId;
+}
+
+export async function handleChatRequest(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    const { message, mode, conversationId, courseId } = req.body;
-    const userId = req.user?.userId;
-
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Unauthorized user context.' });
-    }
-
-    if (!message || !message.trim()) {
-      return res.status(400).json({ success: false, error: 'Message content is required.' });
-    }
-
-    let sourceType = 'GENERAL_AI';
-    let citations: any[] = [];
-    let contextData = '';
-    let systemPrompt = 'You are an advanced academic AI assistant for Aether StudyOS.';
-
-    // StudyOS Tutor / Source-Grounded Mode
-    if (mode === 'STUDY') {
-      
-      
-      const queryEmbedding = await aiAdapter.generateEmbedding(message);
-      const validChunks = await RAGService.retrieveRelevantChunks(userId, queryEmbedding, courseId);
-
-      if (validChunks.length === 0) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            conversationId: conversationId || `conv_${Date.now()}`,
-            messageId: Date.now().toString(),
-            mode: 'STUDY',
-            answer: "I couldn't find enough information about this topic in your uploaded study material.",
-            sourceType: 'SOURCE_INSUFFICIENT',
-            citations: [],
-            usage: { used: 1, limit: 10 },
-            providerUsed: 'None',
-          }
-        });
-      }
-
-      contextData = validChunks.map((chunk, idx) => `[SOURCE_00${idx + 1}] (${chunk.fileName}, Page ${chunk.pageNumber}):\n${chunk.content}`).join('\n\n');
-
-      citations = validChunks.map((chunk, idx) => ({
-        citationId: `SOURCE_00${idx + 1}`,
-        documentId: chunk.documentId,
-        fileName: chunk.fileName,
-        pageNumber: chunk.pageNumber,
-        chunkId: chunk.chunkId,
-      }));
-
-      sourceType = 'SOURCE_GROUNDED';
-      systemPrompt = 'You are the Source-Grounded Academic Tutor for Aether StudyOS. Answer using the supplied academic sources. Do not invent facts or fabricate citations.';
-    }
-
-    let fullPrompt = message;
-    if (contextData) {
-      fullPrompt = `Here are the relevant academic sources:\n${contextData}\n\nAnswer the user's question clearly and concisely using these sources if in STUDY mode.\n\nUser Question: ${message}`;
-    }
-
-    // Execute via Unified Multi-Provider Adapter (Groq + Gemini Failover)
-    const answer = await aiAdapter.generateText({
-      prompt: fullPrompt,
-      systemPrompt: `${systemPrompt}\n\nNote: Keep answers structured, concise, and easy to understand for a university student unless deep detail is explicitly asked.`,
-      temperature: 0.7,
-      maxTokens: 1024,
+    const parsed = chatSchema.safeParse({
+      ...req.body,
+      ...(req.body.courseId ? { courseId: req.body.courseId } : {}),
     });
+    if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'Check your message and try again.', 400);
+    const attachment = req.file ? await parseChatAttachment(req.file) : undefined;
+    const data = await processChatMessage(requireUserId(req), { ...parsed.data, attachment });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    if (error instanceof AIProviderError) return next(new AppError('The AI tutor is temporarily unavailable. Please try again shortly.', 503));
+    return next(error);
+  }
+}
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        conversationId: conversationId || `conv_${Date.now()}`,
-        messageId: Date.now().toString(),
-        mode: mode || 'GENERAL',
-        answer: answer,
-        sourceType: sourceType,
-        citations: citations,
-        usage: { used: 1, limit: 10 },
-        providerUsed: aiAdapter.name || 'AI Failover Manager',
-      }
+export async function getConversationThreads(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const threads = await prisma.conversation.findMany({
+      where: { userId: requireUserId(req) },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        updatedAt: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { content: true, sender: true, createdAt: true },
+        },
+      },
     });
+    return res.status(200).json({ success: true, data: { threads } });
+  } catch (error) {
+    return next(error);
+  }
+}
 
-  } catch (error: any) {
-    console.error('Chat Controller Error:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'AI service temporarily unavailable.' 
+export async function createConversation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const conversation = await prisma.conversation.create({
+      data: { userId: requireUserId(req), title: 'New Chat' },
+      select: { id: true, title: true, createdAt: true, updatedAt: true },
     });
+    return res.status(201).json({ success: true, data: { conversation } });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function getConversation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = requireUserId(req);
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: req.params.conversationId, userId },
+      select: { id: true, title: true, createdAt: true, updatedAt: true },
+    });
+    if (!conversation) throw new AppError('This conversation could not be found.', 404);
+    const messages = await prisma.chatMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 100,
+      include: { citations: { select: { id: true, documentId: true, fileName: true, pageNumber: true, chunkId: true } } },
+    });
+    return res.status(200).json({ success: true, data: { conversation: { ...conversation, messages } } });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function renameConversation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = requireUserId(req);
+    const parsed = renameConversationSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'Enter a valid conversation name.', 400);
+    const existing = await prisma.conversation.findFirst({ where: { id: req.params.conversationId, userId }, select: { id: true } });
+    if (!existing) throw new AppError('This conversation could not be found.', 404);
+    const conversation = await prisma.conversation.update({
+      where: { id: existing.id },
+      data: { title: parsed.data.title, updatedAt: new Date() },
+      select: { id: true, title: true, updatedAt: true },
+    });
+    return res.status(200).json({ success: true, data: { conversation } });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function deleteConversation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = requireUserId(req);
+    const result = await prisma.conversation.deleteMany({ where: { id: req.params.conversationId, userId } });
+    if (result.count === 0) throw new AppError('This conversation could not be found.', 404);
+    return res.status(200).json({ success: true, message: 'Conversation deleted.' });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function regenerateConversationReply(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const parsed = chatSchema.safeParse({ ...req.body, conversationId: req.params.conversationId });
+    if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'The reply could not be regenerated.', 400);
+    const data = await processChatMessage(requireUserId(req), parsed.data, true);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    if (error instanceof AIProviderError) return next(new AppError('The AI tutor is temporarily unavailable. Please try again shortly.', 503));
+    return next(error);
   }
 }

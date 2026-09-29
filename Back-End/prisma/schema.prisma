@@ -156,7 +156,7 @@ model Semester {
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String         // e.g. "Fall 2026"
   startDate  DateTime
-  endDate    DateTime
+  endDate    DateTime?
   status     SemesterStatus @default(ACTIVE)
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
@@ -198,7 +198,7 @@ model DocumentChunk {
   embedding      Unsupported("vector(1536)")? // Requires pgvector extension in PostgreSQL
   createdAt      DateTime       @default(now())
 
-  @@index([materialId])
+  @@index([materialId, chunkIndex])
 }
 
 model CourseMaterial {
@@ -366,6 +366,8 @@ model Conversation {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
 }
 
 model ChatMessage {
@@ -378,6 +380,8 @@ model ChatMessage {
   sourceType     SourceType   @default(GENERAL_AI)
   createdAt      DateTime     @default(now())
   citations      Citation[]
+
+  @@index([conversationId, createdAt])
 }
 
 model Citation {

@@ -2,10 +2,11 @@
 import { GroqProvider } from './providers/groq.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { AIFailoverManager } from './ai-failover.manager';
+import { ENV } from '../../config/env';
 
-// Yeh tumhara single unified adapter/manager hai jo dono ko wrap karta hai
-const groq = new GroqProvider(process.env.GROQ_API_KEY!, 'openai/gpt-oss-20b');
-const gemini = new GeminiProvider(process.env.GEMINI_API_KEY!, 'gemini-1.5-pro');
+const providers = [
+  ...(ENV.GROQ_API_KEY ? [new GroqProvider(ENV.GROQ_API_KEY, 'openai/gpt-oss-20b')] : []),
+  ...(ENV.GEMINI_API_KEY ? [new GeminiProvider(ENV.GEMINI_API_KEY, 'gemini-3.8-flash')] : []),
+];
 
-// Failover Manager: Pehle Groq try karega, agar limit/error aya toh bina user ko bataye Gemini pe shift ho jayega
-export const aiAdapter = new AIFailoverManager([groq, gemini]);
+export const aiAdapter = new AIFailoverManager(providers);

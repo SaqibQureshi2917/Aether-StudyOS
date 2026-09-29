@@ -82,6 +82,24 @@
   gap: 0.85rem;
 }
 
+.statusButton {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.statusPending { background: var(--brand-accent); color: #fff; }
+.statusComplete { background: rgba(34, 197, 94, 0.15); color: #16a34a; border-color: rgba(34, 197, 94, 0.4); }
+.statusButton:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14); }
+.statusPending:hover:not(:disabled) { filter: brightness(1.1); }
+.statusComplete:hover:not(:disabled) { background: rgba(34, 197, 94, 0.24); }
+.statusButton:focus-visible, .openBtn:focus-visible, .addBtn:focus-visible { outline: 3px solid rgba(99, 102, 241, 0.45); outline-offset: 2px; }
+.statusButton:disabled { opacity: 0.6; cursor: wait; }
+
 .cardHeader {
   display: flex;
   align-items: center;
@@ -100,6 +118,8 @@
   border-radius: 4px;
   font-weight: 700;
 }
+
+.cardHeader .completedBadge { display: none; }
 
 .priorityBadge.urgent, .priorityBadge.high {
   background-color: rgba(239, 68, 68, 0.15);
@@ -164,14 +184,17 @@
   font-weight: 600;
   text-decoration: none;
   margin-top: 0.4rem;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
+
+.openBtn:hover { background: var(--surface-card); border-color: var(--brand-accent); transform: translateY(-1px); }
+.addBtn, .submitBtn { transition: filter 150ms ease, transform 150ms ease; }
+.addBtn:hover:not(:disabled), .submitBtn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 
 .overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
+  overflow-y: auto;
   background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -225,6 +248,20 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.noSubjects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.noSubjects a { color: var(--brand-accent); font-weight: 700; }
 
 .group input, .group select {
   padding: 0.65rem;

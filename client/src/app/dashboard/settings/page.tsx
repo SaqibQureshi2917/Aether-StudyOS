@@ -168,14 +168,15 @@ export default function SettingsPage() {
 
             <div className={styles.fieldGroup}>
               <label className={styles.label}>
-                Daily Study Target: <strong className={styles.accentText}>{dailyHours} Hours/Day</strong>
+                Daily Study Target: <strong className={styles.accentText}>{formatStudyGoal(dailyHours)}</strong>
               </label>
               <input
                 type="range"
-                min="1"
-                max="8"
-                value={dailyHours}
-                onChange={(e) => setDailyHours(parseInt(e.target.value))}
+                min="7"
+                max="480"
+                step="1"
+                value={Math.round(dailyHours * 60)}
+                onChange={(e) => setDailyHours(Number(e.target.value) / 60)}
                 className={styles.rangeInput}
               />
             </div>
@@ -232,4 +233,13 @@ export default function SettingsPage() {
 
     </div>
   );
+}
+
+function formatStudyGoal(hours: number) {
+  const minutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const duration = [wholeHours ? `${wholeHours} hr${wholeHours === 1 ? '' : 's'}` : '', remainingMinutes ? `${remainingMinutes} min` : '']
+    .filter(Boolean).join(' ');
+  return `${duration || '0 min'} / day`;
 }

@@ -43,11 +43,12 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [recentChats, setRecentChats] = useState<ChatThreadItem[]>([]);
   const [chatLoading, setChatLoading] = useState(true);
+  const [chatLoadError, setChatLoadError] = useState('');
 
   const mainTools = [
     { label: 'Overview', href: '/dashboard', icon: <FiHome /> },
     { label: 'Assignments', href: '/dashboard/assignments', icon: <FiCheckSquare /> },
-    { label: 'Courses', href: '/dashboard/courses', icon: <FiBookOpen /> },
+    { label: 'Subjects', href: '/dashboard/courses', icon: <FiBookOpen /> },
     { label: 'AI Study Tutor', href: '/dashboard/chat', icon: <FiMessageSquare /> },
     { label: 'Semester Planner', href: '/dashboard/planner', icon: <FiCalendar /> },
   ];
@@ -60,19 +61,26 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
   const fetchRecentChats = useCallback(async () => {
     try {
       setChatLoading(true);
-      const res: any = await apiRequest('/chat/threads', 'GET');
+      const res = await apiRequest<{ data?: { threads?: ChatThreadItem[] } }>('/chat/threads', 'GET');
       if (res.data?.threads) {
         setRecentChats(res.data.threads);
       }
-    } catch (err) {
-      console.warn('Recent chats fetch fallback');
+    } catch {
+      setChatLoadError('Recent chats are unavailable right now.');
     } finally {
       setChatLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // Load the persisted thread list when the shared dashboard sidebar mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchRecentChats();
+  }, [fetchRecentChats]);
+
+  useEffect(() => {
+    window.addEventListener('studyos:chat-updated', fetchRecentChats);
+    return () => window.removeEventListener('studyos:chat-updated', fetchRecentChats);
   }, [fetchRecentChats]);
 
   useEffect(() => {
@@ -191,6 +199,8 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
                     );
                   })}
                 </div>
+              ) : chatLoadError ? (
+                <div className={styles.noChats} role="status">{chatLoadError}</div>
               ) : (
                 <div className={styles.noChats}>No previous chats yet.</div>
               )}

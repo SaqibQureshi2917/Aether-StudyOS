@@ -14,8 +14,8 @@ export class DocumentChunkingService {
    */
   public static chunkText(
     fullText: string,
-    maxCharsPerChunk: number = 1000, // Yeh fix hai: int ki jagah number
-    overlapChars: number = 200       // Yeh fix hai: int ki jagah number
+    maxCharsPerChunk: number = 1000,
+    overlapChars: number = 200
   ): DocumentChunkOutput[] {
     if (!fullText || fullText.trim().length === 0) {
       return [];

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
 import { useToast } from '@/components/layout/toast/ToastContext';
 import { 
   FiPlus, 
@@ -19,7 +19,7 @@ import skeletonStyles from '@/styles/skeletons.module.css';
 
 interface TaskItem {
   id: string;
-  isCompleted: boolean;
+  status: string;
 }
 
 interface AssignmentItem {
@@ -31,7 +31,7 @@ interface AssignmentItem {
   estimatedHours: number;
   completedHours: number;
   course?: { name: string; colorCode: string };
-  tasks: TaskItem[];
+  studyTasks: TaskItem[];
 }
 
 interface CourseItem {
@@ -43,6 +43,8 @@ function AssignmentsContent() {
   const searchParams = useSearchParams();
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [courseLoadError, setCourseLoadError] = useState('');
   const [courseId, setCourseId] = useState('');
   
   const [filter, setFilter] = useState('ALL');
@@ -56,6 +58,7 @@ function AssignmentsContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { showToast } = useToast();
   const [modalError, setModalError] = useState('');
+  const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('action') === 'new') {
@@ -63,34 +66,65 @@ function AssignmentsContent() {
     }
   }, [searchParams]);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = async (showLoading = true) => {
     try {
-      setLoading(true);
+      const cachedAssignments = getCachedApiResponse<{ data?: { assignments?: AssignmentItem[] } }>('/assignments')?.data?.assignments;
+      if (cachedAssignments) setAssignments(cachedAssignments);
+      if (showLoading && !cachedAssignments) setLoading(true);
       const res: any = await apiRequest('/assignments', 'GET');
       if (res.data?.assignments) {
         setAssignments(res.data.assignments);
       }
     } catch (err: any) {
-      console.warn('Assignments fetch fallback:', err);
+      if (showLoading) showToast(err?.message || 'Assignments could not be loaded. Please try again.', 'error');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   const fetchCourses = async () => {
     try {
+      const cachedCourses = getCachedApiResponse<{ data?: { courses?: CourseItem[] } }>('/courses')?.data?.courses;
+      if (cachedCourses) setCourses(cachedCourses);
+      if (!cachedCourses) setCoursesLoading(true);
       const res: any = await apiRequest('/courses', 'GET');
       if (res.data?.courses) {
         setCourses(res.data.courses);
+        setCourseLoadError('');
       }
-    } catch (err) {
-      console.warn('Courses fetch fallback:', err);
+    } catch (err: any) {
+      setCourseLoadError('Your subjects could not be loaded. Refresh the page and try again.');
+      showToast(err?.message || 'Subjects could not be loaded. Please try again.', 'error');
+    } finally {
+      setCoursesLoading(false);
+    }
+  };
+
+  const toggleAssignmentStatus = async (assignment: AssignmentItem) => {
+    try {
+      setUpdatingAssignmentId(assignment.id);
+      await apiRequest(`/assignments/${assignment.id}/status`, 'PATCH');
+      await fetchAssignments(false);
+      showToast(assignment.status === 'COMPLETED' ? 'Assignment marked in progress.' : 'Assignment marked completed.', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Assignment status could not be updated.', 'error');
+    } finally {
+      setUpdatingAssignmentId(null);
     }
   };
 
   useEffect(() => {
     fetchAssignments();
     fetchCourses();
+    const refreshAssignments = () => {
+      if (document.visibilityState === 'visible') void fetchAssignments(false);
+    };
+    window.addEventListener('focus', refreshAssignments);
+    const refreshTimer = window.setInterval(refreshAssignments, 15000);
+    return () => {
+      window.removeEventListener('focus', refreshAssignments);
+      window.clearInterval(refreshTimer);
+    };
   }, []);
 
   const minDateTime = new Date().toISOString().slice(0, 16);
@@ -99,8 +133,12 @@ function AssignmentsContent() {
     e.preventDefault();
     setModalError('');
 
+    if (courses.length === 0) {
+      setModalError('You have not added any subjects yet. Add a subject before creating an assignment.');
+      return;
+    }
     if (!courseId) {
-      setModalError('Please select a course for this assignment.');
+      setModalError('Please select a subject for this assignment.');
       return;
     }
 
@@ -143,7 +181,6 @@ function AssignmentsContent() {
       showToast('Assignment created successfully!', 'success');
       fetchAssignments();
     } catch (err: any) {
-      console.error('Failed to create assignment:', err);
       const msg = typeof err.response?.data?.error?.message === 'string'
         ? err.response.data.error.message
         : typeof err.response?.data?.error === 'string'
@@ -207,10 +244,10 @@ function AssignmentsContent() {
       ) : filteredAssignments.length > 0 ? (
         <div className={styles.grid}>
           {filteredAssignments.map((item) => {
-            const totalTasks = item.tasks?.length || 0;
-            const completedTasks = item.tasks?.filter((t) => t.isCompleted)?.length || 0;
-            const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            const totalTasks = item.studyTasks?.length || 0;
+            const completedTasks = item.studyTasks?.filter((t) => t.status === 'COMPLETED')?.length || 0;
             const isCompleted = item.status === 'COMPLETED';
+            const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
             return (
               <div key={item.id} className={styles.card}>
@@ -221,6 +258,15 @@ function AssignmentsContent() {
                   <span className={`${styles.priorityBadge} ${isCompleted ? styles.completedBadge : styles[item.priority?.toLowerCase() || 'medium']}`}>
                     {isCompleted ? '✓ Completed' : `${item.priority} Priority`}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => void toggleAssignmentStatus(item)}
+                    className={`${styles.statusButton} ${isCompleted ? styles.statusComplete : styles.statusPending}`}
+                    disabled={updatingAssignmentId === item.id}
+                    aria-label={isCompleted ? 'Mark assignment in progress' : 'Mark assignment completed'}
+                  >
+                    {updatingAssignmentId === item.id ? 'Updating...' : isCompleted ? '✓ Completed' : 'Mark complete'}
+                  </button>
                 </div>
 
                 <h3 className={styles.cardTitle}>{item.title}</h3>
@@ -232,7 +278,7 @@ function AssignmentsContent() {
 
                 <div className={styles.progressContainer}>
                   <div className={styles.progressHeader}>
-                    <span>Progress ({completedTasks}/{totalTasks} Tasks)</span>
+                    <span>Milestones: {completedTasks}/{totalTasks} complete</span>
                     <strong>{progressPct}%</strong>
                   </div>
                   <div className={styles.progressTrack}>
@@ -271,20 +317,20 @@ function AssignmentsContent() {
 
             <form onSubmit={handleCreateAssignment} className={styles.form}>
               <div className={styles.group}>
-                <label>Select Course *</label>
-                <select 
-                  value={courseId} 
-                  onChange={(e) => setCourseId(e.target.value)} 
-                  required
-                  disabled={isSubmitting}
-                >
-                  <option value="">-- Choose a Course --</option>
-                  {Array.isArray(courses) && courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <label>Select Subject *</label>
+                {coursesLoading ? <p>Loading subjects...</p> : courseLoadError ? (
+                  <div className={styles.noSubjects} role="alert">{courseLoadError}</div>
+                ) : courses.length === 0 ? (
+                  <div className={styles.noSubjects} role="alert">
+                    <span>You have not added any subjects yet. Add a subject before creating an assignment.</span>
+                    <Link href="/dashboard/courses">Add a subject</Link>
+                  </div>
+                ) : (
+                  <select value={courseId} onChange={(e) => setCourseId(e.target.value)} required disabled={isSubmitting}>
+                    <option value="">Choose a subject</option>
+                    {courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
               </div>
 
               <div className={styles.group}>
@@ -292,7 +338,7 @@ function AssignmentsContent() {
                 <input 
                   type="text" 
                   required 
-                  placeholder="e.g. CNN Image Classification Report"
+                  placeholder="Enter assignment title"
                   value={title} 
                   onChange={(e) => setTitle(e.target.value)} 
                   disabled={isSubmitting}
@@ -336,7 +382,7 @@ function AssignmentsContent() {
                 </div>
               </div>
 
-              <button type="submit" className={styles.submitBtn} disabled={isSubmitting}>
+              <button type="submit" className={styles.submitBtn} disabled={isSubmitting || coursesLoading || courses.length === 0}>
                 {isSubmitting ? 'Integrating with Planner...' : 'Save & Integrate with Planner'}
               </button>
             </form>

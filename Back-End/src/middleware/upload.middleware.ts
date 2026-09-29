@@ -23,16 +23,12 @@ const storage = multer.diskStorage({
 
 // File Filter (Only PDF, DOCX, PPTX allowed)
 const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedMimetypes = [
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  ];
-
-  if (allowedMimetypes.includes(file.mimetype) || file.originalname.endsWith('.pdf')) {
+  const extension = path.extname(file.originalname).toLowerCase();
+  const allowedExtensions = ['.pdf', '.docx', '.pptx'];
+  if (allowedExtensions.includes(extension)) {
     cb(null, true);
   } else {
-    cb(new AppError('Only PDF, DOCX, and PPTX files are allowed!', 400) as any, false);
+    cb(new AppError('Choose a PDF, DOCX, or PPTX file.', 400) as any, false);
   }
 };
 

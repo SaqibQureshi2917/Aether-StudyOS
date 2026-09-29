@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
@@ -14,12 +14,15 @@ import {
   FiX,
   FiFastForward,
   FiAlertCircle,
-  FiPlus
+  FiPlus,
+  FiFileText,
 } from 'react-icons/fi';
 import styles from './OnboardingWizard.module.css';
+import { useToast } from '@/components/layout/toast/ToastContext';
 
 export interface CourseItem {
   courseName: string;
+  files: File[];
 }
 
 export interface OnboardingData {
@@ -35,12 +38,15 @@ export interface OnboardingData {
 export default function OnboardingWizard() {
   const router = useRouter();
   const { setAuthenticatedUser } = useAuth();
+  const { showToast } = useToast();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Local state for Step 2 course addition
   const [tempSubjectName, setTempSubjectName] = useState<string>('');
+  const [tempSubjectFiles, setTempSubjectFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Main Onboarding Form State
   const [formData, setFormData] = useState<OnboardingData>({
@@ -60,7 +66,7 @@ export default function OnboardingWizard() {
       return;
     }
 
-    const newCourse: CourseItem = { courseName: tempSubjectName.trim() };
+    const newCourse: CourseItem = { courseName: tempSubjectName.trim(), files: tempSubjectFiles };
 
     setFormData((prev) => ({
       ...prev,
@@ -69,7 +75,51 @@ export default function OnboardingWizard() {
 
     // Reset temporary input values & clean error
     setTempSubjectName('');
+    setTempSubjectFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setErrorMessage('');
+  };
+
+  const handleFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    const invalidFile = selectedFiles.find((file) => {
+      const supportedType = /\.(pdf|docx|pptx)$/i.test(file.name);
+      return !supportedType || file.size > 15 * 1024 * 1024;
+    });
+    if (invalidFile) {
+      setErrorMessage(`${invalidFile.name} is not supported. Choose a PDF, DOCX, or PPTX up to 15 MB.`);
+      event.target.value = '';
+      return;
+    }
+    setTempSubjectFiles((previous) => [...previous, ...selectedFiles]);
+    setErrorMessage('');
+    event.target.value = '';
+  };
+
+  const uploadSubjectFiles = async (courses: Array<{ id: string; name: string }>) => {
+    let failedCount = 0;
+    for (const subject of formData.courseFiles) {
+      const course = courses.find((item) => item.name.trim().toLocaleLowerCase() === subject.courseName.trim().toLocaleLowerCase());
+      for (const file of subject.files) {
+        if (!course) {
+          failedCount += 1;
+          continue;
+        }
+        const fileData = new FormData();
+        fileData.append('file', file);
+        fileData.append('courseId', course.id);
+        try {
+          const result: any = await apiRequest('/materials/upload', 'POST', fileData);
+          const extracted = result.data?.extractedAssignment;
+          if (extracted && !extracted.deadline) {
+            showToast(`Assignment "${extracted.title}" was found, but the file has no due date. Add it from Assignments using this title and your due date.`, 'info');
+          }
+        } catch {
+          failedCount += 1;
+        }
+      }
+    }
+    return failedCount;
   };
 
   const handleRemoveSubject = (index: number) => {
@@ -100,9 +150,17 @@ export default function OnboardingWizard() {
       setAuthenticatedUser(response.data.user);
     }
 
+    if (!isSkipped && formData.courseFiles.some((course) => course.files.length > 0)) {
+      const failedUploads = await uploadSubjectFiles(response.data?.courses || []);
+      if (failedUploads > 0) {
+        showToast(`Onboarding is complete, but ${failedUploads} file${failedUploads === 1 ? '' : 's'} could not be uploaded. You can add them later from Materials.`, 'error');
+      } else {
+        showToast('Onboarding and course files saved successfully.', 'success');
+      }
+    }
+
     router.replace('/dashboard');
   } catch (err: any) {
-    console.error('Onboarding Express API Save Error:', err);
     setErrorMessage(err.message || 'Failed to save onboarding data.');
   } finally {
     setIsLoading(false);
@@ -124,15 +182,15 @@ export default function OnboardingWizard() {
         setErrorMessage('Degree Major is mandatory! Please enter your major or click "Skip for now".');
         return;
       }
-      if (!formData.semesterStartDate || !formData.semesterEndDate || formData.semesterStartDate >= formData.semesterEndDate) {
-        setErrorMessage('Enter valid semester start and end dates, with the end date after the start date.');
+      if (!formData.semesterStartDate || (formData.semesterEndDate && formData.semesterStartDate >= formData.semesterEndDate)) {
+        setErrorMessage('Enter a valid semester start date. The end date must be later if provided.');
         return;
       }
       setCurrentStep(2);
       return;
     }
 
-    // Step 2 Validation Rule: At least 1 subject must be added
+    // Step 2 Validation Rule: Course names are required; course documents are optional.
     if (currentStep === 2) {
       if (formData.courseFiles.length === 0) {
         setErrorMessage('Please add at least one subject to continue, or click "Skip for now".');
@@ -197,7 +255,7 @@ export default function OnboardingWizard() {
             <div className={styles.iconBadge}><FiBookOpen /></div>
             <h1 className={styles.stepTitle}>Academic Profile</h1>
             <p className={styles.stepSubtitle}>
-              Tell us about your degree program and current semester.
+              Tell us about your degree program and current semester. If you do not know the end date, we will estimate a six-month semester.
             </p>
 
             <div className={styles.formGroup}>
@@ -206,7 +264,7 @@ export default function OnboardingWizard() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. BS Computer Science, Software Engineering"
+                placeholder="Enter your major"
                 value={formData.major}
                 onChange={(e) => setFormData({ ...formData, major: e.target.value })}
                 className={styles.input}
@@ -243,14 +301,13 @@ export default function OnboardingWizard() {
             </div>
 
             <div className={styles.formGroup}>
-              <label className={styles.label}>Semester End Date <span className={styles.requiredStar}>*</span></label>
+              <label className={styles.label}>Semester End Date <span>(optional)</span></label>
               <input
                 type="date"
                 value={formData.semesterEndDate}
                 onChange={(e) => setFormData({ ...formData, semesterEndDate: e.target.value })}
                 className={styles.input}
                 min={formData.semesterStartDate || undefined}
-                required
               />
             </div>
           </motion.div>
@@ -266,9 +323,9 @@ export default function OnboardingWizard() {
             className={styles.stepContent}
           >
             <div className={styles.iconBadge}><FiUploadCloud /></div>
-            <h1 className={styles.stepTitle}>Your Courses</h1>
+            <h1 className={styles.stepTitle}>Your Subjects</h1>
             <p className={styles.stepSubtitle}>
-              Add the courses in your active semester. This setup currently records course names only.
+              Add your active subjects by name. Subject files are optional and can be attached now or later.
             </p>
 
             {/* Input Box for Subject */}
@@ -279,11 +336,40 @@ export default function OnboardingWizard() {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Artificial Intelligence"
+                  placeholder="Enter subject name"
                   value={tempSubjectName}
                   onChange={(e) => setTempSubjectName(e.target.value)}
                   className={styles.input}
                 />
+              </div>
+
+              <div className={styles.optionalFilesGroup}>
+                <span className={styles.optionalLabel}>Subject files <span>(optional)</span></span>
+                <div className={styles.fileInputRow}>
+                  <input
+                    ref={fileInputRef}
+                    id="onboarding-course-files"
+                    className={styles.hiddenInput}
+                    type="file"
+                    accept=".pdf,.docx,.pptx"
+                    multiple
+                    onChange={handleFilesSelected}
+                  />
+                  <label htmlFor="onboarding-course-files" className={styles.fileLabelBtn}>
+                    <FiUploadCloud /> Choose PDFs, DOCX, or PPTX
+                  </label>
+                </div>
+                {tempSubjectFiles.length > 0 && (
+                  <ul className={styles.pendingFileList}>
+                    {tempSubjectFiles.map((file, index) => (
+                      <li key={`${file.name}-${index}`}>
+                        <FiFileText /> <span>{file.name}</span>
+                        <button type="button" onClick={() => setTempSubjectFiles((files) => files.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}><FiX /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <small>Each file must be 15 MB or smaller.</small>
               </div>
 
               <button
@@ -305,6 +391,9 @@ export default function OnboardingWizard() {
                       <FiBookOpen className={styles.fileIcon} />
                       <div>
                         <strong>{item.courseName}</strong>
+                        {item.files.map((file, fileIndex) => (
+                          <span key={`${file.name}-${fileIndex}`} className={styles.fileNameAttached}>{file.name}</span>
+                        ))}
                       </div>
                     </div>
                     <button
@@ -338,15 +427,16 @@ export default function OnboardingWizard() {
 
             <div className={styles.formGroup}>
               <label className={styles.label}>
-                Daily Target: <strong className={styles.highlightText}>{formData.studyGoalHours} Hours/Day</strong>
+              Daily Target: <strong className={styles.highlightText}>{formatStudyGoal(formData.studyGoalHours)}</strong>
               </label>
               <input
                 type="range"
-                min="1"
-                max="10"
-                value={formData.studyGoalHours}
+                min="7"
+                max="600"
+                step="1"
+                value={Math.round(formData.studyGoalHours * 60)}
                 onChange={(e) =>
-                  setFormData({ ...formData, studyGoalHours: parseInt(e.target.value) })
+                  setFormData({ ...formData, studyGoalHours: Number(e.target.value) / 60 })
                 }
                 className={styles.rangeInput}
               />
@@ -384,4 +474,13 @@ export default function OnboardingWizard() {
       </div>
     </div>
   );
+}
+
+function formatStudyGoal(hours: number) {
+  const minutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const duration = [wholeHours ? `${wholeHours} hr${wholeHours === 1 ? '' : 's'}` : '', remainingMinutes ? `${remainingMinutes} min` : '']
+    .filter(Boolean).join(' ');
+  return `${duration || '0 min'} / day`;
 }

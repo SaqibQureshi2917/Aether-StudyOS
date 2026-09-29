@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const assignment_controller_1 = require("../controllers/assignment.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const assignment_controller_2 = require("../controllers/assignment.controller");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.post('/', assignment_controller_1.createAssignment);
+router.get('/', assignment_controller_1.getAssignments);
+router.get('/:id', assignment_controller_1.getAssignmentById);
+router.put('/:id', assignment_controller_1.updateAssignment);
+router.patch('/:id/status', assignment_controller_2.toggleAssignmentStatus);
+router.delete('/:id', assignment_controller_1.deleteAssignment);
+// Tasks / Milestones
+router.post('/:id/tasks/regenerate', assignment_controller_1.regenerateAssignmentTasks);
+router.post('/:id/tasks', assignment_controller_1.addAssignmentTask);
+router.patch('/:id/tasks/:taskId', assignment_controller_1.toggleAssignmentTask);
+router.delete('/:id/tasks/:taskId', assignment_controller_1.deleteAssignmentTask);
+exports.default = router;

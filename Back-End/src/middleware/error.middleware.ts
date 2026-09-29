@@ -17,6 +17,6 @@ export const errorHandler = (
   const statusCode = err instanceof AppError ? err.statusCode : 500;
   res.status(statusCode).json({
     success: false,
-    error: { message: err.message || 'Internal Server Error' },
+    error: { message: err instanceof AppError ? err.message : 'Something went wrong. Please try again.' },
   });
 };
