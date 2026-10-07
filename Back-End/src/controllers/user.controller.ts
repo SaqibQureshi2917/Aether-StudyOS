@@ -6,7 +6,7 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 export const onboardUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    const { major, semester, semesterStartDate, semesterEndDate, studyGoalHours, aiMode } = req.body;
+    const { major, semester, semesterStartDate, semesterEndDate, studyGoalHours, dailySessionMinutes, aiMode } = req.body;
     const rawCourses: unknown = req.body.courses ?? [];
 
     if (!userId) {
@@ -49,13 +49,17 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
     }
 
     const goalHours = studyGoalHours === undefined ? 3 : Number(studyGoalHours);
+    const sessionMinutes = dailySessionMinutes === undefined ? Math.min(480, Math.max(15, Math.round(goalHours * 60))) : Number(dailySessionMinutes);
+    if (!Number.isInteger(sessionMinutes) || sessionMinutes < 15 || sessionMinutes > 480) {
+      throw new AppError('Session length must be a whole number from 15 to 480 minutes.', 400);
+    }
     if (!Number.isFinite(goalHours) || goalHours < 7 / 60 || goalHours > 24) {
       throw new AppError('Study goal must be between 7 minutes and 24 hours per day.', 400);
     }
 
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, aiMode: true, isOnboarded: true },
+      select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, dailySessionMinutes: true, aiMode: true, isOnboarded: true },
     });
     if (!currentUser) throw new AppError('User profile not found.', 404);
     if (currentUser.isOnboarded) {
@@ -69,10 +73,11 @@ export const onboardUser = async (req: AuthenticatedRequest, res: Response, next
           major: normalizedMajor || null,
           currentSemester: normalizedSemester || null,
           dailyGoalHours: goalHours,
+          dailySessionMinutes: sessionMinutes,
           aiMode: aiMode?.toUpperCase() || 'BALANCED',
           isOnboarded: true,
         },
-        select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, aiMode: true, isOnboarded: true },
+        select: { id: true, fullName: true, email: true, major: true, currentSemester: true, dailyGoalHours: true, dailySessionMinutes: true, aiMode: true, isOnboarded: true },
       });
 
       const courses: { id: string; name: string }[] = [];
@@ -125,7 +130,7 @@ export const updateUserProfile = async (req: AuthenticatedRequest, res: Response
     const userId = req.user?.userId;
     if (!userId) throw new AppError('Unauthorized access', 401);
 
-    const { fullName, major, currentSemester, dailyGoalHours, aiMode } = req.body;
+    const { fullName, major, currentSemester, dailyGoalHours, dailySessionMinutes, aiMode } = req.body;
     if (typeof fullName !== 'string' || typeof major !== 'string' || typeof currentSemester !== 'string') {
       throw new AppError('Name, major, and semester must be text values.', 400);
     }
@@ -139,6 +144,10 @@ export const updateUserProfile = async (req: AuthenticatedRequest, res: Response
     }
     if (normalizedMajor.length > 120 || normalizedSemester.length > 100) {
       throw new AppError('Major or semester name is too long.', 400);
+    }
+    const sessionMinutes = dailySessionMinutes === undefined ? Math.min(480, Math.max(15, Math.round(goalHours * 60))) : Number(dailySessionMinutes);
+    if (!Number.isInteger(sessionMinutes) || sessionMinutes < 15 || sessionMinutes > 480) {
+      throw new AppError('Session length must be a whole number from 15 to 480 minutes.', 400);
     }
     if (!Number.isFinite(goalHours) || goalHours < 7 / 60 || goalHours > 24) {
       throw new AppError('Study goal must be between 7 minutes and 24 hours per day.', 400);
@@ -155,6 +164,7 @@ export const updateUserProfile = async (req: AuthenticatedRequest, res: Response
           major: normalizedMajor || null,
           currentSemester: normalizedSemester || null,
           dailyGoalHours: goalHours,
+          dailySessionMinutes: sessionMinutes,
           aiMode: aiMode.toUpperCase(),
         },
         select: {
@@ -164,6 +174,7 @@ export const updateUserProfile = async (req: AuthenticatedRequest, res: Response
           major: true,
           currentSemester: true,
           dailyGoalHours: true,
+          dailySessionMinutes: true,
           aiMode: true,
           planType: true,
           isOnboarded: true,

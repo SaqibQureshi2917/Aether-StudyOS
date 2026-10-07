@@ -16,6 +16,27 @@ export function normalizeLoginEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+// Serialize attempts by email and IP in PostgreSQL, so limits hold across app instances.
+export async function consumeAuthAttempt(email: string, req: Request, emailLimit: number, ipLimit: number) {
+  const emailHash = hash(`email:${normalizeLoginEmail(email)}`);
+  const ipHash = hash(`ip:${req.ip || req.socket.remoteAddress || 'unknown'}`);
+  return prisma.$transaction(async (tx) => {
+    const locks = [...new Set([`auth-email:${emailHash}`, `auth-ip:${ipHash}`])].sort();
+    for (const lock of locks) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lock}))`;
+    const since = new Date(Date.now() - WINDOW_MS);
+    const [emailCount, ipCount] = await Promise.all([
+      tx.authLoginAttempt.count({ where: { emailHash, createdAt: { gte: since } } }),
+      tx.authLoginAttempt.count({ where: { ipHash, createdAt: { gte: since } } }),
+    ]);
+    if (emailCount >= emailLimit || ipCount >= ipLimit) return false;
+    await tx.authLoginAttempt.create({ data: { emailHash, ipHash } });
+    if (cleanupCounter++ % 100 === 0) {
+      await tx.authLoginAttempt.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 24 * 60 * 60_000) } } });
+    }
+    return true;
+  });
+}
+
 export async function assertLoginAllowed(email: string, req: Request) {
   const emailHash = hash(normalizeLoginEmail(email));
   const ipHash = hash(req.ip || req.socket.remoteAddress || 'unknown');
@@ -41,5 +62,8 @@ export async function recordFailedLogin(email: string, req: Request) {
 }
 
 export async function clearFailedLogins(email: string) {
-  await prisma.authLoginAttempt.deleteMany({ where: { emailHash: hash(normalizeLoginEmail(email)) } });
+  const normalizedEmail = normalizeLoginEmail(email);
+  await prisma.authLoginAttempt.deleteMany({
+    where: { emailHash: { in: [hash(normalizedEmail), hash(`email:${normalizedEmail}`)] } },
+  });
 }

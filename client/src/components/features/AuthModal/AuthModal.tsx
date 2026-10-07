@@ -121,10 +121,6 @@ export default function AuthModal() {
 
       const res: any = await apiRequest(endpoint, "POST", payload);
 
-      if (typeof res.token === 'string') {
-        sessionStorage.setItem('studyos_token', res.token);
-      }
-
       const user = res.user || res.data?.user;
 
       if (!user) {

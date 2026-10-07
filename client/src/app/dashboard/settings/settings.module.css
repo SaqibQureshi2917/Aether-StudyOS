@@ -275,6 +275,15 @@
   z-index: 2100;
 }
 
+.plannerDialogOverlay { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 1rem; background: #0009; backdrop-filter: blur(4px); }
+.plannerDialog { width: min(100%, 520px); padding: 1.5rem; border: 1px solid var(--border); border-radius: 14px; color: var(--text-primary); background: var(--surface-card); box-shadow: 0 20px 70px #0003; }
+.plannerDialog h2 { margin: 0 2rem .65rem 0; font-size: 1.2rem; }
+.plannerDialog p { color: var(--text-secondary); font-size: .88rem; line-height: 1.55; }
+.plannerDialogActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .65rem; margin-top: 1.25rem; }
+.plannerKeepButton, .plannerUpdateButton { min-height: 42px; padding: .65rem .9rem; border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); background: var(--surface); font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer; }
+.plannerUpdateButton { border-color: var(--brand-accent); color: #fff; background: var(--brand-accent); }
+.plannerKeepButton:disabled, .plannerUpdateButton:disabled { opacity: .6; cursor: wait; }
+
 @media (max-width: 768px) {
   .settingsLayout {
     flex-direction: column;

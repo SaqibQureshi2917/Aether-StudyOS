@@ -519,3 +519,16 @@
   .riskText { flex: 1 1 calc(100% - 3rem); }
   .riskBtn { margin-left: 2.5rem; }
 }
+
+.planChoiceOverlay { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 1.25rem; background: rgba(15, 23, 42, .48); backdrop-filter: blur(5px); animation: planFadeIn .3s ease both; }
+.planChoiceDialog { width: min(100%, 30rem); padding: 1.75rem; border: 1px solid var(--border); border-radius: 20px; background: var(--surface-card); color: var(--text-primary); box-shadow: 0 24px 80px rgba(15,23,42,.24); animation: planLiftIn .3s ease both; }
+.planChoiceDialog h2 { margin-bottom: .6rem; font-size: 1.3rem; }
+.planChoiceDialog p { color: var(--text-secondary); line-height: 1.6; }
+.planChoiceDialog > div { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1.4rem; }
+.planChoiceDialog button { padding: .65rem .9rem; border: 1px solid var(--brand-accent); border-radius: 10px; background: var(--brand-accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; transition: all .3s ease; }
+.planChoiceDialog button:nth-child(2), .planChoiceDialog button:nth-child(3) { background: transparent; color: var(--brand-accent); }
+.planChoiceDialog button:hover { background: var(--brand-accent-hover); color: #fff; }
+@keyframes planFadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes planLiftIn { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
+
+.mainContent { animation: planFadeIn .3s ease both; }

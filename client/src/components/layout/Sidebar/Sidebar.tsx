@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiRequest } from '@/lib/apiClient';
 import { 
   FiHome, 
@@ -40,6 +40,7 @@ interface SidebarProps {
 export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, isCollapsed, isMobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [recentChats, setRecentChats] = useState<ChatThreadItem[]>([]);
@@ -196,7 +197,7 @@ export default function Sidebar({ onOpenSetupModal, isSetupCompleted = false, is
               ) : recentChats.length > 0 ? (
                 <div className={styles.chatList}>
                   {recentChats.slice(0, 5).map((chat) => {
-                    const isActive = pathname === `/dashboard/chat` && location.search.includes(chat.id);
+                    const isActive = pathname === '/dashboard/chat' && searchParams.get('threadId') === chat.id;
                     return (
                       <Link
                         key={chat.id}

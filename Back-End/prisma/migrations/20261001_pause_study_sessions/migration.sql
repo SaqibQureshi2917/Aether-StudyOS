@@ -1,0 +1,2 @@
+ALTER TYPE "SessionStatus" ADD VALUE 'PAUSED';
+ALTER TABLE "StudySession" ADD COLUMN "pausedAt" TIMESTAMP(3);

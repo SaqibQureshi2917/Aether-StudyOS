@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { ENV } from './config/env';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -16,7 +17,7 @@ import recommendationRoutes from './routes/recommendation.routes';
 import semesterRoutes from './routes/semester.routes';
 
 const app: Application = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', Number.isSafeInteger(ENV.TRUST_PROXY_HOPS) && ENV.TRUST_PROXY_HOPS >= 0 ? ENV.TRUST_PROXY_HOPS : 0);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use(helmet());
 app.use(cors({ origin: ENV.CORS_ORIGINS, credentials: true }));
 app.use(express.json());
 

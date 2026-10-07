@@ -9,6 +9,7 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel: string;
   busyLabel: string;
+  cancelLabel?: string;
   isBusy?: boolean;
   errorMessage?: string;
   tone?: 'danger' | 'warning';
@@ -21,6 +22,7 @@ export default function ConfirmDialog({
   description,
   confirmLabel,
   busyLabel,
+  cancelLabel = 'No, go back',
   isBusy = false,
   errorMessage,
   tone = 'warning',
@@ -64,7 +66,7 @@ export default function ConfirmDialog({
         {errorMessage && <div className={styles.error} role="alert">{errorMessage}</div>}
         <div className={styles.actions}>
           <button ref={cancelRef} type="button" className={styles.cancelButton} onClick={onCancel} disabled={isBusy}>
-            No, go back
+            {cancelLabel}
           </button>
           <button
             type="button"

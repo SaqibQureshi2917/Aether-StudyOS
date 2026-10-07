@@ -2,13 +2,17 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
 import { AppError } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { localDateParts } from '../services/plannerEngine/timezone.util';
 
 export const startSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
     const { sessionId } = req.body;
+    const timeZone = typeof req.body?.timeZone === 'string' ? req.body.timeZone : 'UTC';
     if (!userId) throw new AppError('Unauthorized access', 401);
     if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
+    try { new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date()); }
+    catch { throw new AppError('A valid time zone is required to start this session.', 400); }
 
     const session = await prisma.studySession.findFirst({
       where: { id: sessionId, userId },
@@ -19,15 +23,20 @@ export const startSession = async (req: AuthenticatedRequest, res: Response, nex
     if (session.task.status === 'COMPLETED') throw new AppError('This study task is already complete.', 409);
 
     const now = new Date();
-    if (now.getTime() < session.scheduledStart.getTime() - 15 * 60_000) {
-      throw new AppError('This session can be started up to 15 minutes before its planned time.', 409);
-    }
+    const dateKey = (date: Date) => { const parts = localDateParts(date, timeZone); return `${parts.year}-${parts.month}-${parts.day}`; };
+    const sessionDate = dateKey(session.scheduledStart);
+    const today = dateKey(now);
+    if (sessionDate > today) throw new AppError('This session can only be started on its scheduled date.', 409);
+    if (sessionDate < today) throw new AppError('This session date has passed. Mark it missed or reschedule it before starting.', 409);
     const updatedSession = await prisma.$transaction(async (tx) => {
       const activeSession = await tx.studySession.findFirst({
-        where: { userId, status: 'IN_PROGRESS' },
-        select: { id: true },
+        where: { userId, status: { in: ['IN_PROGRESS', 'PAUSED'] } },
+        include: { task: { include: { course: { select: { name: true } } } } },
       });
-      if (activeSession) throw new AppError('Finish the active study session before starting another.', 409);
+      if (activeSession) {
+        const action = activeSession.status === 'PAUSED' ? 'Resume' : 'Finish';
+        throw new AppError(`${action} your active session for ${activeSession.task.course.name} before starting another session.`, 409);
+      }
 
       const result = await tx.studySession.updateMany({
         where: { id: sessionId, userId, status: 'SCHEDULED' },
@@ -44,7 +53,6 @@ export const startSession = async (req: AuthenticatedRequest, res: Response, nex
     next(error);
   }
 };
-
 export const completeSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
@@ -57,7 +65,7 @@ export const completeSession = async (req: AuthenticatedRequest, res: Response, 
       include: { task: { include: { assignment: true } } },
     });
     if (!session) throw new AppError('Study session not found.', 404);
-    if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
+    if (!['IN_PROGRESS', 'PAUSED'].includes(session.status) || !session.startedAt) {
       throw new AppError('Only an active study session can be completed.', 409);
     }
     if (actualMinutes !== undefined && (!Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 720)) {
@@ -65,7 +73,8 @@ export const completeSession = async (req: AuthenticatedRequest, res: Response, 
     }
 
     const endedAt = new Date();
-    const elapsedMs = Math.max(0, endedAt.getTime() - session.startedAt.getTime() - session.pauseDuration * 60_000);
+    const currentPause = session.status === 'PAUSED' && session.pausedAt ? endedAt.getTime() - session.pausedAt.getTime() : 0;
+    const elapsedMs = Math.max(0, endedAt.getTime() - session.startedAt.getTime() - session.pauseDuration * 60_000 - currentPause);
     if (actualMinutes === undefined && elapsedMs > 12 * 60 * 60_000) {
       throw new AppError('This timer has been running for over 12 hours. Submit the actual study minutes to record it accurately.', 400);
     }
@@ -75,8 +84,8 @@ export const completeSession = async (req: AuthenticatedRequest, res: Response, 
 
     const updatedSession = await prisma.$transaction(async (tx) => {
       const changed = await tx.studySession.updateMany({
-        where: { id: sessionId, userId, status: 'IN_PROGRESS' },
-        data: { status, actualDuration: actualDurationHours, endedAt },
+        where: { id: sessionId, userId, status: { in: ['IN_PROGRESS', 'PAUSED'] } },
+        data: { status, actualDuration: actualDurationHours, endedAt, pausedAt: null },
       });
       if (changed.count !== 1) throw new AppError('This study session has already changed state.', 409);
 
@@ -137,28 +146,77 @@ export const completeSession = async (req: AuthenticatedRequest, res: Response, 
     res.status(200).json({
       success: true,
       message: 'Study session completed and recorded.',
-      data: { session: updatedSession, isPartial },
+      data: { session: updatedSession, isPartial, isOverPlan: actualDurationHours > session.plannedDuration },
     });
   } catch (error) {
     next(error);
   }
+};
+export const pauseSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { sessionId } = req.body;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
+    const now = new Date();
+    const updated = await prisma.studySession.updateMany({ where: { id: sessionId, userId, status: 'IN_PROGRESS' }, data: { status: 'PAUSED', pausedAt: now } });
+    if (updated.count !== 1) throw new AppError('Only an active study session can be paused.', 409);
+    const session = await prisma.studySession.findUnique({ where: { id: sessionId }, include: { task: { include: { course: { select: { name: true } } } } } });
+    return res.status(200).json({ success: true, message: 'Study session paused.', data: { session } });
+  } catch (error) { return next(error); }
+};
+
+export const resumeSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const { sessionId } = req.body;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
+    const existing = await prisma.studySession.findFirst({ where: { id: sessionId, userId, status: 'PAUSED', pausedAt: { not: null } }, select: { pausedAt: true } });
+    if (!existing?.pausedAt) throw new AppError('Only a paused study session can be resumed.', 409);
+    const now = new Date();
+    const pausedMinutes = Math.max(0, (now.getTime() - existing.pausedAt.getTime()) / 60_000);
+    const result = await prisma.studySession.updateMany({
+      where: { id: sessionId, userId, status: 'PAUSED', pausedAt: existing.pausedAt },
+      data: { status: 'IN_PROGRESS', pausedAt: null, pauseDuration: { increment: pausedMinutes } },
+    });
+    if (result.count !== 1) throw new AppError('This paused session changed state. Refresh and try again.', 409);
+    const session = await prisma.studySession.findUnique({ where: { id: sessionId }, include: { task: { include: { course: { select: { name: true } } } } } });
+    return res.status(200).json({ success: true, message: 'Study session resumed.', data: { session } });
+  } catch (error) { return next(error); }
+};
+
+export const getActiveSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized access', 401);
+    const session = await prisma.studySession.findFirst({
+      where: { userId, status: { in: ['IN_PROGRESS', 'PAUSED'] } },
+      include: { task: { include: { course: { select: { id: true, name: true, colorCode: true } } } } },
+      orderBy: { startedAt: 'desc' },
+    });
+    return res.status(200).json({ success: true, data: { session } });
+  } catch (error) { return next(error); }
 };
 
 export const markSessionMissed = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
     const { sessionId } = req.body;
+    const timeZone = typeof req.body?.timeZone === 'string' ? req.body.timeZone : 'UTC';
     if (!userId) throw new AppError('Unauthorized access', 401);
     if (typeof sessionId !== 'string' || !sessionId) throw new AppError('sessionId is required.', 400);
+    try { new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date()); }
+    catch { throw new AppError('A valid time zone is required to update this session.', 400); }
 
     const session = await prisma.studySession.findFirst({
       where: { id: sessionId, userId },
       include: { task: true },
     });
     if (!session) throw new AppError('Study session not found.', 404);
-    if (session.status !== 'SCHEDULED' || session.scheduledEnd > new Date()) {
-      throw new AppError('Only elapsed scheduled sessions can be marked missed.', 409);
-    }
+    if (session.status !== 'SCHEDULED') throw new AppError('Only scheduled sessions can be marked missed.', 409);
+    const dateKey = (date: Date) => { const parts = localDateParts(date, timeZone); return `${parts.year}-${parts.month}-${parts.day}`; };
+    if (dateKey(session.scheduledStart) >= dateKey(new Date())) throw new AppError('A session can only be marked missed after its scheduled date has passed.', 409);
 
     const updatedSession = await prisma.$transaction(async (tx) => {
       const changed = await tx.studySession.updateMany({

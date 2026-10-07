@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "dailySessionMinutes" INTEGER NOT NULL DEFAULT 60;

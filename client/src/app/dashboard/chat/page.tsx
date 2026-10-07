@@ -7,6 +7,7 @@ import {
   FiGlobe, FiImage, FiMessageSquare, FiPlus, FiRefreshCw, FiSend, FiTrash2, FiX,
 } from 'react-icons/fi';
 import { apiRequest } from '@/lib/apiClient';
+import { formatTimePK } from '@/lib/dateFormat';
 import MarkdownContent from './MarkdownContent';
 import ChatPageSkeleton from '@/components/layout/ChatPageSkeleton/ChatPageSkeleton';
 import styles from './chat.module.css';
@@ -431,7 +432,7 @@ function ChatWorkspace() {
               <article key={message.id} className={message.sender === 'USER' ? styles.userMessage : styles.assistantMessage}>
                 <div className={styles.messageMeta}>
                   <strong>{message.sender === 'USER' ? 'You' : message.mode === 'STUDY' ? 'StudyOS Tutor' : 'General AI'}</strong>
-                  <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
+                  <time dateTime={message.createdAt}>{formatTimePK(message.createdAt)}</time>
                 </div>
                 {message.sender === 'USER' && message.attachmentName && <div className={styles.filePreview}><FiFileText /><span className={styles.fileName}>{message.attachmentName}</span></div>}
                 {message.sender === 'ASSISTANT' && (

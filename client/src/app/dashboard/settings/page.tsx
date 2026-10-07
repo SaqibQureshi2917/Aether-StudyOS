@@ -14,12 +14,16 @@ import {
   FiCheck, 
 } from 'react-icons/fi';
 import styles from './settings.module.css';
+import { useToast } from '@/components/layout/toast/ToastContext';
 
 export default function SettingsPage() {
   const { user, setAuthenticatedUser } = useAuth();
+  const { showToast } = useToast();
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [plannerNotice, setPlannerNotice] = useState('');
+  const [goalChangeStage, setGoalChangeStage] = useState<'PLAN' | 'COMPLETED_SESSIONS' | null>(null);
+  const [previousDailyGoal, setPreviousDailyGoal] = useState<number | null>(null);
 
   // Profile & Preference States
   const [fullName, setFullName] = useState('');
@@ -43,8 +47,10 @@ export default function SettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    setSaveError('');
+    setPlannerNotice('');
     try {
+      const oldDailyGoal = user?.dailyGoalHours ?? 3;
+      const goalChanged = Math.abs(oldDailyGoal - dailyHours) >= 1 / 60;
       const response: any = await apiRequest('/user/profile', 'PATCH', {
         fullName,
         major,
@@ -55,10 +61,47 @@ export default function SettingsPage() {
       const updatedUser = response.data?.user;
       if (!updatedUser) throw new Error('The updated profile was not returned by the server.');
       setAuthenticatedUser(updatedUser);
+      if (goalChanged) {
+        setPreviousDailyGoal(oldDailyGoal);
+        setGoalChangeStage('PLAN');
+        setPlannerNotice('Your daily target is saved. Choose whether the current planner should stay as it is or be updated.');
+      } else setPlannerNotice('Your settings have been saved.');
       setIsSaved(true);
       window.setTimeout(() => setIsSaved(false), 3000);
     } catch (error: any) {
-      setSaveError(error?.message || 'Could not save your profile. Please try again.');
+      showToast(error?.message || 'Could not save your profile. Please try again.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updatePlannerForGoal = async (repeatCompletedSessions: boolean) => {
+    setIsSaving(true);
+    try {
+      const semesters: any = await apiRequest('/semesters', 'GET');
+      const activeSemester = semesters.data?.semesters?.find((item: { status: string }) => item.status === 'ACTIVE');
+      if (!activeSemester) {
+        setPlannerNotice('Your daily target is saved. Create or activate a semester before updating its planner.');
+        setGoalChangeStage(null);
+        return;
+      }
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const repeatCycleId = repeatCompletedSessions ? crypto.randomUUID() : undefined;
+      const options = { repeatCompletedSessions, ...(repeatCycleId ? { repeatCycleId } : {}) };
+      const preview: any = await apiRequest('/planner/preview', 'POST', { semesterId: activeSemester.id, timeZone, ...options });
+      if (!preview.data?.sessions?.length) {
+        setPlannerNotice('No sessions fit the updated target and deadlines. Your existing planner sessions were left unchanged. Review the planner conflicts before trying again.');
+        setGoalChangeStage(null);
+        return;
+      }
+      await apiRequest('/planner/apply', 'POST', { semesterId: activeSemester.id, previewHash: preview.data.previewHash, timeZone, ...options });
+      const repeatedCount = preview.data.repeatedCompletedCount || 0;
+      setPlannerNotice(repeatCompletedSessions && repeatedCount
+        ? 'Planner updated. ' + repeatedCount + ' completed study session' + (repeatedCount === 1 ? '' : 's') + ' scheduled again; their original history remains saved.'
+        : 'Planner updated. Completed sessions remain saved in your study history.');
+      setGoalChangeStage(null);
+    } catch (error: any) {
+      showToast(error?.message || 'The planner could not be updated. Your current schedule is still saved.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -85,9 +128,9 @@ export default function SettingsPage() {
           </button>
         </header>
 
-        {saveError && <p role="alert">{saveError}</p>}
+        {plannerNotice && <p role="status">{plannerNotice}</p>}
 
-        <form id="settingsForm" onSubmit={handleSave} className={styles.formGrid}>
+        <form id="settingsForm" noValidate onSubmit={handleSave} className={styles.formGrid}>
           
           {/* Section 1: Academic Profile Information */}
           <section className={styles.settingsCard}>
@@ -109,7 +152,6 @@ export default function SettingsPage() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className={styles.input}
-                    required
                   />
                 </div>
               </div>
@@ -123,7 +165,6 @@ export default function SettingsPage() {
                     value={email}
                     className={styles.input}
                     disabled
-                    required
                   />
                 </div>
               </div>
@@ -137,7 +178,6 @@ export default function SettingsPage() {
                     value={major}
                     onChange={(e) => setMajor(e.target.value)}
                     className={styles.input}
-                    required
                   />
                 </div>
               </div>
@@ -149,7 +189,6 @@ export default function SettingsPage() {
                   value={semester}
                   onChange={(e) => setSemester(e.target.value)}
                   className={styles.input}
-                  required
                   maxLength={100}
                 />
               </div>
@@ -230,6 +269,25 @@ export default function SettingsPage() {
 
         </form>
       </main>
+
+      {goalChangeStage && <div className={styles.plannerDialogOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSaving) setGoalChangeStage(null); }}>
+        <section className={styles.plannerDialog} role="dialog" aria-modal="true" aria-labelledby="planner-goal-dialog-title">
+          <h2 id="planner-goal-dialog-title">Daily study target changed</h2>
+          {goalChangeStage === 'PLAN' ? <>
+            <p>Your target changed from {formatStudyGoal(previousDailyGoal ?? 0)} to {formatStudyGoal(dailyHours)}. What should happen to your existing planner?</p>
+            <div className={styles.plannerDialogActions}>
+              <button type="button" className={styles.plannerKeepButton} disabled={isSaving} onClick={() => { setGoalChangeStage(null); setPlannerNotice('Daily target saved. Your existing planner sessions were left unchanged.'); }}>Keep current planner</button>
+              <button type="button" className={styles.plannerUpdateButton} disabled={isSaving} onClick={() => setGoalChangeStage('COMPLETED_SESSIONS')}>Update planner</button>
+            </div>
+          </> : <>
+            <p>Your completed study history will stay intact. Should the completed study sessions from the current plan be scheduled again as new work?</p>
+            <div className={styles.plannerDialogActions}>
+              <button type="button" className={styles.plannerKeepButton} disabled={isSaving} onClick={() => void updatePlannerForGoal(false)}>Skip completed sessions</button>
+              <button type="button" className={styles.plannerUpdateButton} disabled={isSaving} onClick={() => void updatePlannerForGoal(true)}>{isSaving ? 'Updating…' : 'Schedule them again'}</button>
+            </div>
+          </>}
+        </section>
+      </div>}
 
     </div>
   );

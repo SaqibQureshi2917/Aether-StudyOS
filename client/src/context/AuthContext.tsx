@@ -14,6 +14,7 @@ export interface AuthUser {
   currentSemester?: string | null;
   planType?: 'FREE' | 'PRO';
   dailyGoalHours?: number;
+  dailySessionMinutes?: number;
   aiMode?: string;
   isOnboarded: boolean;
 }
@@ -81,6 +82,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [clearAuthentication, setAuthenticatedUser]);
 
   useEffect(() => {
+    localStorage.removeItem('studyos_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('studyos_user');
+    sessionStorage.removeItem('studyos_token');
     void refreshUser();
 
     const handleUnauthorized = () => clearAuthentication();

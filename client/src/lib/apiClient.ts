@@ -22,8 +22,7 @@ const inFlightGetRequests = new Map<string, Promise<unknown>>();
 let cacheGeneration = 0;
 
 function getRequestCacheKey(endpoint: string) {
-  const token = typeof window === 'undefined' ? '' : window.sessionStorage.getItem('studyos_token') || '';
-  return `${token || 'cookie-session'}:${endpoint}`;
+  return `cookie-session:${endpoint}`;
 }
 
 export function getCachedApiResponse<T>(endpoint: string): T | null {
@@ -63,10 +62,6 @@ export async function apiRequest<T>(
   }
 
   const headers: Record<string, string> = {};
-  if (typeof window !== 'undefined') {
-    const sessionToken = window.sessionStorage.getItem('studyos_token');
-    if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
-  }
 
   // 2. Set Content-Type (Automatically omit for FormData file uploads)
   if (!(body instanceof FormData)) {
@@ -146,12 +141,7 @@ export async function apiRequest<T>(
 
 export async function downloadApiFile(endpoint: string) {
   assertApiConfigured();
-  const headers: Record<string, string> = {};
-  if (typeof window !== 'undefined') {
-    const sessionToken = window.sessionStorage.getItem('studyos_token');
-    if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
-  }
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'GET', headers, credentials: 'include' });
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'GET', credentials: 'include' });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.error?.message || 'The file could not be downloaded.');

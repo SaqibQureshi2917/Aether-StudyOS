@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar/Sidebar';
 import Header from '@/components/layout/Header/Header';
+import ActiveStudyTimer from '@/components/features/ActiveStudyTimer/ActiveStudyTimer';
 import PageSkeleton from '@/components/layout/PageSkeleton/PageSkeleton';
 import { useAuth } from '@/context/AuthContext';
 import styles from './dashboard.module.css';
@@ -50,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
         <div className={styles.layoutContentWrapper}>{children}</div>
       </div>
+      <ActiveStudyTimer />
     </div>
   );
 }

@@ -9,17 +9,15 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
   const cookieToken = req.headers.cookie
     ?.split(';')
     .map((cookie) => cookie.trim())
     .find((cookie) => cookie.startsWith('studyos_session='))
     ?.slice('studyos_session='.length);
-  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
-  const token = bearerToken || cookieToken;
+  const token = cookieToken;
   if (!token) return next(new AppError('Unauthorized access', 401));
   const isStateChangingRequest = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (cookieToken && isStateChangingRequest && !ENV.CORS_ORIGINS.includes(req.headers.origin || '')) {
+  if (isStateChangingRequest && (!req.headers.origin || !ENV.CORS_ORIGINS.includes(req.headers.origin))) {
     return next(new AppError('Request origin is not allowed.', 403));
   }
   try {

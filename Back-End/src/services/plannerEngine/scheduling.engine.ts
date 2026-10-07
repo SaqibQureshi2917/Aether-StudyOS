@@ -4,6 +4,7 @@ export interface TaskInput {
   remainingHours: number;
   priorityScore: number;
   deadline: Date;
+  sessionMinutes?: number;
 }
 
 export interface AvailabilitySlot {
@@ -26,6 +27,7 @@ export interface ScheduleConflict {
   deadline: Date;
   remainingHours: number;
   unscheduledHours: number;
+  unscheduledMinutes: number;
   reason: 'DEADLINE_PASSED' | 'INSUFFICIENT_CAPACITY';
 }
 
@@ -37,7 +39,6 @@ export interface ScheduleResult {
   unscheduledHours: number;
 }
 
-const MAX_SESSION_MINUTES = 60;
 const roundHours = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 
 export class SchedulingEngine {
@@ -79,14 +80,14 @@ export class SchedulingEngine {
       const requiredMinutes = Math.max(1, Math.ceil(task.remainingHours * 60 - 1e-8));
       let remainingMinutes = requiredMinutes;
       if (task.deadline.getTime() <= now.getTime()) {
-        conflicts.push({ taskId: task.id, title: task.title, deadline: task.deadline, remainingHours: roundHours(requiredMinutes), unscheduledHours: roundHours(requiredMinutes), reason: 'DEADLINE_PASSED' });
+        conflicts.push({ taskId: task.id, title: task.title, deadline: task.deadline, remainingHours: roundHours(requiredMinutes), unscheduledHours: roundHours(requiredMinutes), unscheduledMinutes: requiredMinutes, reason: 'DEADLINE_PASSED' });
         continue;
       }
 
       for (const slot of mergedSlots) {
         while (remainingMinutes > 0 && slot.remainingMinutes > 0 && slot.currentPointer < task.deadline) {
           const minutesUntilDeadline = Math.floor((task.deadline.getTime() - slot.currentPointer.getTime()) / 60_000);
-          const minutesToAllocate = Math.min(remainingMinutes, slot.remainingMinutes, minutesUntilDeadline, MAX_SESSION_MINUTES);
+          const minutesToAllocate = Math.min(remainingMinutes, slot.remainingMinutes, minutesUntilDeadline, task.sessionMinutes ?? 60);
           if (minutesToAllocate <= 0) break;
           const startTime = new Date(slot.currentPointer);
           const endTime = new Date(startTime.getTime() + minutesToAllocate * 60_000);
@@ -105,6 +106,7 @@ export class SchedulingEngine {
           deadline: task.deadline,
           remainingHours: roundHours(requiredMinutes),
           unscheduledHours: roundHours(remainingMinutes),
+          unscheduledMinutes: remainingMinutes,
           reason: 'INSUFFICIENT_CAPACITY',
         });
       }
@@ -116,7 +118,8 @@ export class SchedulingEngine {
       conflicts,
       availableHours: roundHours(availableMinutes),
       scheduledHours: roundHours(scheduledMinutes),
-      unscheduledHours: roundHours(conflicts.reduce((sum, conflict) => sum + conflict.unscheduledHours * 60, 0)),
+      unscheduledHours: roundHours(conflicts.reduce((sum, conflict) => sum + conflict.unscheduledMinutes, 0)),
     };
   }
 }
+

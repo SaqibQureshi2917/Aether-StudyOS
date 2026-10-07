@@ -46,6 +46,7 @@ enum SemesterStatus {
 enum SessionStatus {
   SCHEDULED
   IN_PROGRESS
+  PAUSED
   COMPLETED
   PARTIALLY_COMPLETED
   MISSED
@@ -94,6 +95,7 @@ model User {
   major           String?
   currentSemester String?
   dailyGoalHours  Float    @default(3.0)
+  dailySessionMinutes Int @default(60)
   aiMode          String   @default("BALANCED")
   planType        PlanType @default(FREE)
   isOnboarded     Boolean  @default(false)
@@ -200,6 +202,7 @@ model Course {
   status       String      @default("ACTIVE")
   instructor   String?
   description  String?     @db.Text
+  outlineReviewedAt DateTime?
   colorCode    String?     @default("#6366f1")
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -209,6 +212,23 @@ model Course {
   exams        Exam[]
   studyTasks   StudyTask[]
   topicMasteries TopicMastery[]
+  learningTopics CourseLearningTopic[]
+}
+
+model CourseLearningTopic {
+  id                String   @id @default(uuid())
+  courseId          String
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title             String
+  sequence          Int
+  estimatedMinutes  Int      @default(60)
+  source            String   @default("AI")
+  materialCovered   Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  studyTasks        StudyTask[]
+
+  @@unique([courseId, sequence])
 }
 model DocumentChunk {
   id             String         @id @default(uuid())
@@ -288,6 +308,9 @@ model StudyTask {
   assignment     Assignment?    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   examId         String?
   exam           Exam?          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  learningTopicId String?
+  learningTopic  CourseLearningTopic? @relation(fields: [learningTopicId], references: [id], onDelete: SetNull)
+  isDailyStudy   Boolean        @default(false)
   title          String
   estimatedHours Float
   adjustedHours  Float          @default(0.0)
@@ -317,6 +340,7 @@ model StudySession {
   startedAt        DateTime?
   endedAt          DateTime?
   pauseDuration    Float         @default(0.0) // in minutes
+  pausedAt         DateTime?
   isManualOverride Boolean       @default(false)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt

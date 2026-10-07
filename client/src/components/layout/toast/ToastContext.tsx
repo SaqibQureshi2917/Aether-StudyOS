@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { FiCheckCircle, FiAlertTriangle, FiInfo } from 'react-icons/fi';
+import { FiCheckCircle, FiAlertTriangle, FiInfo, FiX } from 'react-icons/fi';
 import styles from './Toast.module.css';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -43,6 +43,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               {t.type === 'info' && <FiInfo />}
             </span>
             <p className={styles.message}>{t.message}</p>
+            <button type="button" className={styles.dismiss} onClick={() => setToasts((prev) => prev.filter((item) => item.id !== t.id))} aria-label="Dismiss notification"><FiX /></button>
           </div>
         ))}
       </div>

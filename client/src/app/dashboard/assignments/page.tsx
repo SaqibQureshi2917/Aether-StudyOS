@@ -4,15 +4,15 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
+import { formatDatePK } from '@/lib/dateFormat';
 import { useToast } from '@/components/layout/toast/ToastContext';
-import { 
-  FiPlus, 
-  FiClock, 
-  FiCheckCircle, 
-  FiArrowRight, 
+import {
+  FiPlus,
+  FiClock,
+  FiCheckCircle,
+  FiArrowRight,
   FiCalendar,
   FiX,
-  FiAlertTriangle
 } from 'react-icons/fi';
 import styles from './assignments.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
@@ -46,7 +46,7 @@ function AssignmentsContent() {
   const [coursesLoading, setCoursesLoading] = useState(true);
   const [courseLoadError, setCourseLoadError] = useState('');
   const [courseId, setCourseId] = useState('');
-  
+
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,10 +54,9 @@ function AssignmentsContent() {
   const [title, setTitle] = useState('');
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
-  const [estimatedMinutes, setEstimatedMinutes] = useState(240);
+  const [estimatedMinutes, setEstimatedMinutes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { showToast } = useToast();
-  const [modalError, setModalError] = useState('');
   const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,47 +119,14 @@ function AssignmentsContent() {
       if (document.visibilityState === 'visible') void fetchAssignments(false);
     };
     window.addEventListener('focus', refreshAssignments);
-    const refreshTimer = window.setInterval(refreshAssignments, 15000);
     return () => {
       window.removeEventListener('focus', refreshAssignments);
-      window.clearInterval(refreshTimer);
     };
   }, []);
 
-  const minDateTime = new Date().toISOString().slice(0, 16);
-
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setModalError('');
 
-    if (courses.length === 0) {
-      setModalError('You have not added any subjects yet. Add a subject before creating an assignment.');
-      return;
-    }
-    if (!courseId) {
-      setModalError('Please select a subject for this assignment.');
-      return;
-    }
-
-    const selectedDate = new Date(deadline);
-    const now = new Date();
-    const selectedYear = selectedDate.getFullYear();
-
-    if (isNaN(selectedDate.getTime())) {
-      setModalError('Please select a valid date and time.');
-      return;
-    }
-
-    if (selectedDate < now) {
-      setModalError('Assignment deadline cannot be in the past!');
-      return;
-    }
-
-    if (selectedYear < 2026 || selectedYear > 2100) {
-      setModalError('Please enter a valid year (e.g. 2026 - 2100).');
-      return;
-    }
-    
     setIsSubmitting(true);
 
     try {
@@ -168,7 +134,7 @@ function AssignmentsContent() {
         title: title.trim(),
         deadline,
         priority,
-        estimatedHours: estimatedMinutes / 60,
+        ...(estimatedMinutes.trim() ? { estimatedHours: Number(estimatedMinutes) / 60 } : {}),
         courseId,
       });
 
@@ -176,17 +142,17 @@ function AssignmentsContent() {
       setTitle('');
       setDeadline('');
       setCourseId('');
-      setModalError('');
+      setEstimatedMinutes('');
 
       showToast('Assignment created successfully!', 'success');
-      fetchAssignments();
+      void fetchAssignments(false);
     } catch (err: any) {
       const msg = typeof err.response?.data?.error?.message === 'string'
         ? err.response.data.error.message
         : typeof err.response?.data?.error === 'string'
           ? err.response.data.error
           : err.message || 'Failed to create assignment. Please log in again.';
-      setModalError(msg);
+      showToast(msg, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -205,12 +171,11 @@ function AssignmentsContent() {
           <h1>Academic Assignments</h1>
           <p>Manage your workload, task milestones, and effort estimation.</p>
         </div>
-        <button 
-          type="button" 
+        <button
+          type="button"
           onClick={() => {
-            setModalError('');
-            setIsModalOpen(true);
-          }} 
+                    setIsModalOpen(true);
+          }}
           className={styles.addBtn}
           disabled={isSubmitting}
         >
@@ -272,7 +237,7 @@ function AssignmentsContent() {
                 <h3 className={styles.cardTitle}>{item.title}</h3>
 
                 <div className={styles.cardMeta}>
-                  <span><FiCalendar /> Due: {new Date(item.deadline).toLocaleDateString()}</span>
+                  <span><FiCalendar /> Due: {formatDatePK(item.deadline)}</span>
                   <span><FiClock /> {formatStudyDuration(item.estimatedHours)} estimated</span>
                 </div>
 
@@ -308,14 +273,7 @@ function AssignmentsContent() {
               <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} aria-label="Close assignment form"><FiX /></button>
             </div>
 
-            {modalError && (
-              <div className={styles.modalErrorBanner}>
-                <FiAlertTriangle />
-                <span>{modalError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateAssignment} className={styles.form}>
+            <form noValidate onSubmit={handleCreateAssignment} className={styles.form}>
               <div className={styles.group}>
                 <label>Select Subject *</label>
                 {coursesLoading ? <div className={`${skeletonStyles.box} ${skeletonStyles.controlSkeleton}`} role="status" aria-label="Loading subjects" /> : courseLoadError ? (
@@ -326,7 +284,7 @@ function AssignmentsContent() {
                     <Link href="/dashboard/courses">Add a subject</Link>
                   </div>
                 ) : (
-                  <select value={courseId} onChange={(e) => setCourseId(e.target.value)} required disabled={isSubmitting}>
+                  <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={isSubmitting}>
                     <option value="">Choose a subject</option>
                     {courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -335,24 +293,21 @@ function AssignmentsContent() {
 
               <div className={styles.group}>
                 <label>Assignment Title *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
                   placeholder="Enter assignment title"
-                  value={title} 
-                  onChange={(e) => setTitle(e.target.value)} 
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                   disabled={isSubmitting}
                 />
               </div>
 
               <div className={styles.group}>
                 <label>Deadline Date & Time *</label>
-                <input 
-                  type="datetime-local" 
-                  required 
-                  min={minDateTime}
-                  value={deadline} 
-                  onChange={(e) => setDeadline(e.target.value)} 
+                <input
+                  type="datetime-local"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
                   disabled={isSubmitting}
                 />
               </div>
@@ -370,19 +325,20 @@ function AssignmentsContent() {
 
                 <div className={styles.group}>
                   <label>Estimated Study Time (minutes)</label>
-                  <input 
-                    type="number" 
-                    min="7" 
+                  <input
+                    type="number"
+                    min="1"
                     max="60000"
                     step="1"
-                    value={estimatedMinutes} 
-                    onChange={(e) => setEstimatedMinutes(Math.max(7, parseInt(e.target.value, 10) || 7))} 
+                    value={estimatedMinutes}
+                    placeholder="60"
+                    onChange={(e) => setEstimatedMinutes(e.target.value)}
                     disabled={isSubmitting}
                   />
                 </div>
               </div>
 
-              <button type="submit" className={styles.submitBtn} disabled={isSubmitting || coursesLoading || courses.length === 0}>
+              <button type="submit" className={styles.submitBtn} disabled={isSubmitting || coursesLoading}>
                 {isSubmitting ? 'Integrating with Planner...' : 'Save & Integrate with Planner'}
               </button>
             </form>

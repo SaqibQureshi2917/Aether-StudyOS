@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
 import {AppError} from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { localDateParts, localDayBoundary } from '../services/plannerEngine/timezone.util';
 
 export const getDashboardOverview = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -32,18 +33,22 @@ export const getDashboardOverview = async (req: AuthenticatedRequest, res: Respo
     });
 
     // 2. Fetch Today's Scheduled Tasks (Today's Plan) using StudySession
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
+    const timeZone = typeof req.query.timeZone === 'string' ? req.query.timeZone : 'UTC';
+    try { new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date()); }
+    catch { throw new AppError('Your device time zone is not supported. Refresh the page and try again.', 400); }
+    const parts = localDateParts(new Date(), timeZone);
+    const today = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00.000Z`);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const startOfToday = localDayBoundary(today, timeZone, false);
+    const startOfTomorrow = localDayBoundary(tomorrow, timeZone, false);
 
     const todayPlan = await prisma.studySession.findMany({
       where: {
         userId,
         scheduledStart: {
           gte: startOfToday,
-          lte: endOfToday,
+          lt: startOfTomorrow,
         },
       },
       include: {

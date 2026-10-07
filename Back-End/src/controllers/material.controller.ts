@@ -176,6 +176,7 @@ export const uploadMaterial = async (req: AuthenticatedRequest, res: Response, n
         indexingMessage,
       },
     });
+    await prisma.course.update({ where: { id: courseId }, data: { outlineReviewedAt: null } });
     } catch (error) {
       if (!newMaterial) await FileStorageService.remove(storageKey).catch(() => undefined);
       throw error;
@@ -305,11 +306,12 @@ export const deleteMaterial = async (req: AuthenticatedRequest, res: Response, n
   try {
     const userId = req.user?.userId;
     if (!userId) throw new AppError('Unauthorized access', 401);
-    const material = await prisma.courseMaterial.findFirst({ where: { id: req.params.id, course: { semester: { userId } } }, select: { id: true, storageKey: true, fileUrl: true } });
+    const material = await prisma.courseMaterial.findFirst({ where: { id: req.params.id, course: { semester: { userId } } }, select: { id: true, courseId: true, storageKey: true, fileUrl: true } });
     if (!material) throw new AppError('Material not found.', 404);
     await prisma.$transaction(async (tx) => {
       await tx.citation.deleteMany({ where: { documentId: material.id } });
       await tx.courseMaterial.delete({ where: { id: material.id } });
+      await tx.course.update({ where: { id: material.courseId }, data: { outlineReviewedAt: null } });
     });
     let cleanupPending = false;
     if (material.storageKey) {

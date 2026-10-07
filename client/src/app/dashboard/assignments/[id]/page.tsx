@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 // import Header from '@/components/layout/Header/Header';
 import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
+import { formatDateTimePK } from '@/lib/dateFormat';
 import { useToast } from '@/components/layout/toast/ToastContext';
 import { 
   FiArrowLeft, 
@@ -297,7 +298,7 @@ export default function AssignmentDetailPage() {
 
         <div className={styles.metaGrid}>
           <div>
-            <FiCalendar /> Due Date: <strong>{new Date(assignment.deadline).toLocaleString()}</strong>
+            <FiCalendar /> Due Date: <strong>{formatDateTimePK(assignment.deadline)}</strong>
           </div>
           <div>
             <FiClock /> Estimated Effort: <strong>{formatStudyDuration(assignment.estimatedHours)}</strong>

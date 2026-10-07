@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { apiRequest, getCachedApiResponse } from '@/lib/apiClient';
+import { formatDatePK } from '@/lib/dateFormat';
 import { 
   FiBook, 
   FiArrowRight, 
@@ -16,6 +18,7 @@ import {
 } from 'react-icons/fi';
 import styles from './dashboard.module.css';
 import skeletonStyles from '@/styles/skeletons.module.css';
+import { useToast } from '@/components/layout/toast/ToastContext';
 
 interface DashboardData {
   user: {
@@ -68,11 +71,17 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loadError, setLoadError] = useState('');
   const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [showPlanChoice, setShowPlanChoice] = useState(false);
+  const [showPartialChoice, setShowPartialChoice] = useState(false);
+  const hasDashboardData = useRef(false);
+  const dashboardRequestId = useRef(0);
 
   const formatDailyGoal = (hours: number) => {
     const totalMinutes = Math.round(hours * 60);
@@ -83,54 +92,92 @@ export default function DashboardPage() {
     return `${wholeHours} hr${wholeHours === 1 ? '' : 's'}${remainingMinutes ? ` ${remainingMinutes} min` : ''}/day`;
   };
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    const requestId = ++dashboardRequestId.current;
     try {
-      const cached = getCachedApiResponse<{ data?: DashboardData }>('/dashboard/overview')?.data;
-      if (cached) setData(cached);
-      if (!cached && !data) setLoading(true);
+      const dashboardEndpoint = `/dashboard/overview?timeZone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')}`;
+      const cached = getCachedApiResponse<{ data?: DashboardData }>(dashboardEndpoint)?.data;
+      if (cached) { setData(cached); hasDashboardData.current = true; }
+      if (!cached && !hasDashboardData.current) setLoading(true);
       setLoadError('');
-      const res: any = await apiRequest('/dashboard/overview', 'GET');
+      const res: any = await apiRequest(dashboardEndpoint, 'GET');
+      if (requestId !== dashboardRequestId.current) return;
       if (res.data) {
         setData(res.data);
+        hasDashboardData.current = true;
       } else {
         setLoadError('Dashboard data is unavailable right now. Please try again.');
+      showToast('Dashboard data is unavailable right now. Please try again.', 'error');
       }
-    } catch (err) {
-      setLoadError('Could not load your dashboard. Please try again.');
+    } catch (err: any) {
+      if (requestId !== dashboardRequestId.current) return;
+      if (!hasDashboardData.current) setLoadError('Could not load your dashboard. Please try again.');
+      showToast(err?.message || 'Could not refresh your dashboard. Your current information is still shown.', 'error');
     } finally {
-      setLoading(false);
+      if (requestId === dashboardRequestId.current) setLoading(false);
     }
-  };
+  }, [showToast]);
 
   const handleStartSession = async (sessionId: string) => {
     try {
       setUpdatingSessionId(sessionId);
-      await apiRequest('/sessions/start', 'POST', { sessionId });
-      await fetchDashboardData();
-    } catch (err) {
-      setLoadError('Could not start this study session. Please try again.');
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const response: any = await apiRequest('/sessions/start', 'POST', { sessionId, timeZone });
+      setData((current) => current ? ({ ...current, todayPlan: current.todayPlan.map((session) => session.id === sessionId ? { ...session, status: 'IN_PROGRESS', startedAt: response.data?.session?.startedAt || new Date().toISOString() } : session) }) : current);
+      window.dispatchEvent(new CustomEvent('studyos:session-updated', { detail: { source: 'dashboard' } }));
+      void fetchDashboardData();
+    } catch (err: any) {
+      showToast(err?.message || 'Could not start this study session. Please try again.', 'error');
     } finally {
       setUpdatingSessionId(null);
     }
   };
 
+
+  const handleStartStudySession = async () => {
+    if (data?.todayPlan.some((session) => ['IN_PROGRESS', 'PAUSED'].includes(session.status))) {
+      showToast('You already have a study session in progress. Resume or finish it before starting another.', 'info');
+      return;
+    }
+    const nextSession = data?.todayPlan.find((session) => session.status === 'SCHEDULED');
+    if (nextSession) {
+      await handleStartSession(nextSession.id);
+      return;
+    }
+    showToast('No saved session is available today. The planner can build one from your daily study goal.', 'info');
+    router.push('/dashboard/planner');
+  };
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+    const refreshDashboard = (event: Event) => {
+      if (event instanceof CustomEvent && event.detail?.source === 'dashboard') return;
+      void fetchDashboardData();
+    };
+    window.addEventListener('studyos:session-updated', refreshDashboard);
+    window.addEventListener('focus', refreshDashboard);
+    return () => {
+      window.removeEventListener('studyos:session-updated', refreshDashboard);
+      window.removeEventListener('focus', refreshDashboard);
+    };
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     if (!data?.todayPlan.some((session) => session.status === 'IN_PROGRESS')) return;
-    const timerId = window.setInterval(() => setClockNow(Date.now()), 1000);
+    const timerId = window.setInterval(() => setClockNow(Date.now()), 30_000);
     return () => window.clearInterval(timerId);
   }, [data?.todayPlan]);
 
   const handleCompleteSession = async (sessionId: string) => {
     try {
       setUpdatingSessionId(sessionId);
-      await apiRequest('/sessions/complete', 'POST', { sessionId });
-      await fetchDashboardData();
-    } catch (err) {
-      setLoadError('Could not complete this study session. Please try again.');
+      const response: any = await apiRequest('/sessions/complete', 'POST', { sessionId });
+      setData((current) => current ? ({ ...current, todayPlan: current.todayPlan.map((session) => session.id === sessionId ? { ...session, status: response.data?.session?.status || (response.data?.isPartial ? 'PARTIALLY_COMPLETED' : 'COMPLETED') } : session) }) : current);
+      window.dispatchEvent(new CustomEvent('studyos:session-updated', { detail: { source: 'dashboard' } }));
+      if (response.data?.isOverPlan) setShowPlanChoice(true);
+      if (response.data?.isPartial) setShowPartialChoice(true);
+      void fetchDashboardData();
+    } catch (err: any) {
+      showToast(err?.message || 'Could not complete this study session. Please try again.', 'error');
     } finally {
       setUpdatingSessionId(null);
     }
@@ -203,6 +250,9 @@ export default function DashboardPage() {
             <div className={styles.sectionHeader}>
               <h3>Today&apos;s Plan</h3>
               <div className={styles.headerActions}>
+                <button type="button" className={styles.startSessionBtn} onClick={() => void handleStartStudySession()}>
+                  <FiPlay /> Start Study Session
+                </button>
                 <Link href="/dashboard/assignments?action=new" className={styles.quickAddBtn}>
                   <FiPlus /> Add Assignment
                 </Link>
@@ -216,8 +266,8 @@ export default function DashboardPage() {
                 <div className={`${skeletonStyles.box} ${skeletonStyles.boxCardFull}`} />
               </div>
             ) : loadError ? (
-              <div className={styles.emptyState} role="alert">
-                <p>{loadError}</p>
+              <div className={styles.emptyState}>
+                <p>Dashboard details could not be refreshed.</p>
                 <button type="button" onClick={fetchDashboardData}>Retry</button>
               </div>
             ) : data?.todayPlan && data.todayPlan.length > 0 ? (
@@ -225,7 +275,7 @@ export default function DashboardPage() {
                 {data.todayPlan.map((item) => (
                   <div key={item.id} className={styles.planItem}>
                     <div className={styles.planTime}>
-                      {new Date(item.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      Anytime today
                     </div>
                     <div className={styles.planDetails}>
                       <strong>{item.task.title}</strong>
@@ -261,7 +311,8 @@ export default function DashboardPage() {
             ) : (
               <div className={styles.emptyState}>
                 <FiCheckCircle className={styles.checkIcon} />
-                <p>No study sessions scheduled for today. You&apos;re all caught up!</p>
+                <p>No session is on today&apos;s plan yet. Open the planner to review daily sessions. You can start them any time today.</p>
+                <Link href="/dashboard/planner" className={styles.subLink}>Open today&apos;s study planner →</Link>
               </div>
             )}
           </div>
@@ -287,7 +338,7 @@ export default function DashboardPage() {
                       <div className={styles.deadlineHeading}>
                         <strong>{assignment.title}</strong>
                         <span className={isOverdue ? styles.overdueLabel : styles.deadlineLabel}>
-                          {isOverdue ? 'Overdue' : new Date(assignment.deadline).toLocaleDateString()}
+                          {isOverdue ? 'Overdue' : formatDatePK(assignment.deadline)}
                         </span>
                       </div>
                       <span className={styles.deadlineMeta}>
@@ -334,7 +385,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </main>
-
+      {showPlanChoice && <div className={styles.planChoiceOverlay} role="presentation"><section className={styles.planChoiceDialog} role="dialog" aria-modal="true" aria-labelledby="plan-choice-title"><h2 id="plan-choice-title">You studied longer than planned</h2><p>Was this extra study just for today, or would you like to update the upcoming plan?</p><div><button type="button" onClick={() => setShowPlanChoice(false)}>Today only</button><button type="button" onClick={() => router.push('/dashboard/planner')}>Review plan</button><button type="button" onClick={() => setShowPlanChoice(false)}>Keep current plan</button></div></section></div>}
+      {showPartialChoice && <div className={styles.planChoiceOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPartialChoice(false); }}><section className={styles.planChoiceDialog} role="alertdialog" aria-modal="true" aria-labelledby="partial-session-title"><h2 id="partial-session-title">Study time saved</h2><p>You finished before the planned duration. Your completed time is recorded; would you like to review the remaining study work?</p><div><button type="button" onClick={() => setShowPartialChoice(false)}>Stay on dashboard</button><button type="button" onClick={() => router.push('/dashboard/planner')}>Review planner</button></div></section></div>}
     </>
   );
 }

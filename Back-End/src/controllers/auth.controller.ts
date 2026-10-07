@@ -6,20 +6,11 @@ import { comparePassword, hashPassword } from '../utils/password.util';
 import { generateToken } from '../utils/jwt.util';
 import { ENV } from '../config/env';
 import { createHash, randomBytes } from 'crypto';
-import { assertLoginAllowed, clearFailedLogins, normalizeLoginEmail, recordFailedLogin } from '../services/auth-security.service';
+import { assertLoginAllowed, clearFailedLogins, consumeAuthAttempt, normalizeLoginEmail, recordFailedLogin } from '../services/auth-security.service';
 import { sendPasswordResetEmail } from '../services/email.service';
 
 const normalizeEmail = normalizeLoginEmail;
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-const isTrustedCrossSiteRequest = (req: Request) => {
-  const origin = req.headers.origin;
-  if (!origin || !ENV.CORS_ORIGINS.includes(origin)) return false;
-  try {
-    return !['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname);
-  } catch {
-    return false;
-  }
-};
 const getSessionCookieOptions = (req: Request) => {
   const origin = req.headers.origin;
   let isCrossSite = false;
@@ -59,6 +50,11 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       throw new AppError('Password must be between 8 and 128 characters.', 400);
     }
 
+    if (!(await consumeAuthAttempt(normalizedEmail, req, 5, 20))) {
+      res.setHeader('Retry-After', '900');
+      throw new AppError('Too many account creation attempts. Please wait 15 minutes and try again.', 429);
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(409).json({
@@ -91,7 +87,6 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     res.status(201).json({
       success: true,
       message: 'Account created successfully!',
-      ...(isTrustedCrossSiteRequest(req) ? { token } : {}),
       user: {
         id: newUser.id,
         fullName: newUser.fullName,
@@ -99,6 +94,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         major: newUser.major,
         currentSemester: newUser.currentSemester,
         dailyGoalHours: newUser.dailyGoalHours,
+        dailySessionMinutes: newUser.dailySessionMinutes,
         aiMode: newUser.aiMode,
         isOnboarded: newUser.isOnboarded,
       },
@@ -122,20 +118,18 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       throw new AppError('Invalid email or password.', 401);
     }
 
-    if (!(await assertLoginAllowed(normalizedEmail, req))) {
+    if (!(await consumeAuthAttempt(normalizedEmail, req, 10, 30))) {
       res.setHeader('Retry-After', '900');
       throw new AppError('Too many sign-in attempts. Please wait 15 minutes and try again.', 429);
     }
 
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
-      await recordFailedLogin(normalizedEmail, req);
       throw new AppError('Invalid email or password.', 401);
     }
 
     const isPasswordValid = await comparePassword(password, user.password);
     if (!isPasswordValid) {
-      await recordFailedLogin(normalizedEmail, req);
       throw new AppError('Invalid email or password.', 401);
     }
     await clearFailedLogins(normalizedEmail);
@@ -149,7 +143,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     res.status(200).json({
       success: true,
       message: 'Login successful!',
-      ...(isTrustedCrossSiteRequest(req) ? { token } : {}),
       user: {
         id: user.id,
         fullName: user.fullName,
@@ -157,6 +150,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         major: user.major,
         currentSemester: user.currentSemester,
         dailyGoalHours: user.dailyGoalHours,
+        dailySessionMinutes: user.dailySessionMinutes,
         aiMode: user.aiMode,
         isOnboarded: user.isOnboarded,
       },
@@ -245,6 +239,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response, next: Next
         major: true,
         currentSemester: true,
         dailyGoalHours: true,
+          dailySessionMinutes: true,
         aiMode: true,
         planType: true,
         isOnboarded: true,

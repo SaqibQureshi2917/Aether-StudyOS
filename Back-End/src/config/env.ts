@@ -11,6 +11,7 @@ if (!jwtSecret || jwtSecret.length < 32) {
 export const ENV = {
   PORT: process.env.PORT || '5000',
   NODE_ENV: process.env.NODE_ENV || 'development',
+  TRUST_PROXY_HOPS: Number.parseInt(process.env.TRUST_PROXY_HOPS || '0', 10),
   DATABASE_URL: process.env.DATABASE_URL || '',
   CORS_ORIGINS: [...new Set([
     'http://localhost:3000',
